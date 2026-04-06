@@ -41,6 +41,16 @@ android {
     }
 }
 
+// guava:24.1-jre (pulled in by termux-shared) and androidx.* both bring ListenableFuture.
+// Replace the standalone artifact with the empty conflict-avoidance stub so guava wins.
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "com.google.guava" && requested.name == "listenablefuture") {
+            useVersion("9999.0-empty-to-avoid-conflict-with-guava")
+        }
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
@@ -50,10 +60,12 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
 
-    // Termux modules — uncommented in Task 2
-    // implementation(project(":terminal-emulator"))
-    // implementation(project(":termux-shared"))
-    // implementation(project(":termux-x11-app"))
+    // Termux modules
+    implementation(project(":terminal-emulator"))
+    implementation(project(":termux-shared"))
+    // termux-x11-app is an application module (standalone APK), not a library.
+    // It is co-built in this multi-module project and launched via explicit Intent at runtime.
+    // implementation(project(":termux-x11-app"))  // cannot impl an application module
 
     testImplementation(libs.junit5.api)
     testRuntimeOnly(libs.junit5.engine)
