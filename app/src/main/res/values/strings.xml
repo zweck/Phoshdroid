@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Phoshdroid</string>
+    <string name="notification_title">Phoshdroid is running</string>
+    <string name="notification_text">postmarketOS desktop is active</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_stop">Stop</string>
+    <string name="extracting_termux">Extracting Termux environment\u2026</string>
+    <string name="extracting_rootfs">Extracting postmarketOS\u2026</string>
+    <string name="preparing_desktop">Preparing your desktop\u2026</string>
+    <string name="starting_desktop">Starting desktop\u2026</string>
+    <string name="error_no_space">Not enough storage space. Need %1$s, have %2$s.</string>
+    <string name="error_proot_failed">proot failed to start. Tap to copy logs.</string>
+    <string name="welcome_toast">Pull down from top for Phosh settings. Access Phoshdroid settings from the notification.</string>
+</resources>

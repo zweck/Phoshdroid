@@ -1,0 +1,15 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# Android
+app/src/main/assets/rootfs.tar.zst
+app/src/main/assets/bootstrap.tar.zst
+
+# OS
+.DS_Store
