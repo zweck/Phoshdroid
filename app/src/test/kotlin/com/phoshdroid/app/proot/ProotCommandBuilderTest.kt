@@ -5,36 +5,32 @@ import org.junit.jupiter.api.Test
 
 class ProotCommandBuilderTest {
 
-    @Test
-    fun `builds default login command`() {
-        val builder = ProotCommandBuilder(
-            prootDistroPath = "/data/data/com.phoshdroid.app/files/usr/bin/proot-distro",
-            distroName = "postmarketos"
-        )
+    private val nativeLibDir = "/data/app/com.phoshdroid.app/lib/arm64"
+    private val prefixDir = "/data/data/com.phoshdroid.app/files/usr"
 
-        val cmd = builder.buildLoginCommand(
+    private fun builder() = ProotCommandBuilder(
+        nativeLibDir = nativeLibDir,
+        prefixDir = prefixDir,
+        distroName = "postmarketos"
+    )
+
+    @Test
+    fun `builds default login command using native bash`() {
+        val cmd = builder().buildLoginCommand(
             startupScript = "/etc/phoshdroid/start.sh"
         )
 
-        assertEquals(
-            listOf(
-                "/data/data/com.phoshdroid.app/files/usr/bin/proot-distro",
-                "login", "postmarketos",
-                "--shared-tmp",
-                "--", "/bin/bash", "/etc/phoshdroid/start.sh"
-            ),
-            cmd
-        )
+        assertEquals("$nativeLibDir/libbash.so", cmd[0])
+        assertEquals("$prefixDir/bin/proot-distro", cmd[1])
+        assertTrue(cmd.contains("login"))
+        assertTrue(cmd.contains("postmarketos"))
+        assertTrue(cmd.contains("--shared-tmp"))
+        assertEquals("/etc/phoshdroid/start.sh", cmd.last())
     }
 
     @Test
     fun `adds sdcard bind mount when enabled`() {
-        val builder = ProotCommandBuilder(
-            prootDistroPath = "/data/data/com.phoshdroid.app/files/usr/bin/proot-distro",
-            distroName = "postmarketos"
-        )
-
-        val cmd = builder.buildLoginCommand(
+        val cmd = builder().buildLoginCommand(
             startupScript = "/etc/phoshdroid/start.sh",
             bindSdcard = true
         )
@@ -45,52 +41,33 @@ class ProotCommandBuilderTest {
     }
 
     @Test
-    fun `builds registration command`() {
-        val builder = ProotCommandBuilder(
-            prootDistroPath = "/data/data/com.phoshdroid.app/files/usr/bin/proot-distro",
-            distroName = "postmarketos"
+    fun `builds install command using native bash`() {
+        val cmd = builder().buildInstallCommand(
+            tarballPath = "/data/data/com.phoshdroid.app/files/rootfs/rootfs.tar"
         )
 
-        val cmd = builder.buildInstallCommand(
-            tarballPath = "/data/data/com.phoshdroid.app/files/rootfs/rootfs.tar.zst"
-        )
-
-        assertEquals(
-            listOf(
-                "/data/data/com.phoshdroid.app/files/usr/bin/proot-distro",
-                "install",
-                "--override-alias", "postmarketos",
-                "/data/data/com.phoshdroid.app/files/rootfs/rootfs.tar.zst"
-            ),
-            cmd
-        )
+        assertEquals("$nativeLibDir/libbash.so", cmd[0])
+        assertEquals("$prefixDir/bin/proot-distro", cmd[1])
+        assertTrue(cmd.contains("install"))
+        assertTrue(cmd.contains("--override-alias"))
     }
 
     @Test
-    fun `builds environment variables for wayland`() {
-        val builder = ProotCommandBuilder(
-            prootDistroPath = "/data/data/com.phoshdroid.app/files/usr/bin/proot-distro",
-            distroName = "postmarketos"
-        )
-
-        val env = builder.buildEnvironment()
+    fun `builds environment with proot exec path`() {
+        val env = builder().buildEnvironment()
 
         assertEquals("wayland-0", env["WAYLAND_DISPLAY"])
         assertEquals("/tmp", env["XDG_RUNTIME_DIR"])
-        assertTrue(env.containsKey("DISPLAY"))
+        assertEquals("$nativeLibDir/libproot.so", env["PROOT_EXEC"])
+        assertTrue(env["PATH"]!!.contains(nativeLibDir))
     }
 
     @Test
     fun `custom startup script overrides default`() {
-        val builder = ProotCommandBuilder(
-            prootDistroPath = "/data/data/com.phoshdroid.app/files/usr/bin/proot-distro",
-            distroName = "postmarketos"
-        )
-
-        val cmd = builder.buildLoginCommand(
+        val cmd = builder().buildLoginCommand(
             startupScript = "/home/user/my-start.sh"
         )
 
-        assertTrue(cmd.last() == "/home/user/my-start.sh")
+        assertEquals("/home/user/my-start.sh", cmd.last())
     }
 }

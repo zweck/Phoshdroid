@@ -21,8 +21,10 @@ class ProotService : Service() {
     override fun onCreate() {
         super.onCreate()
         val filesDir = applicationContext.filesDir
+        val nativeLibDir = applicationInfo.nativeLibraryDir
         val commandBuilder = ProotCommandBuilder(
-            prootDistroPath = "${filesDir}/usr/bin/proot-distro",
+            nativeLibDir = nativeLibDir,
+            prefixDir = "${filesDir}/usr",
             distroName = DISTRO_NAME
         )
         manager = ProotDistroManager(

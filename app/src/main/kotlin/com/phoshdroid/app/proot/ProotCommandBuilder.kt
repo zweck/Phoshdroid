@@ -1,16 +1,23 @@
 package com.phoshdroid.app.proot
 
 class ProotCommandBuilder(
-    private val prootDistroPath: String,
+    private val nativeLibDir: String,
+    private val prefixDir: String,
     private val distroName: String
 ) {
+    // Binaries in nativeLibDir are executable (extracted by Android from APK)
+    // Scripts and data in prefixDir are NOT executable (app data storage)
+    private val bashPath = "$nativeLibDir/libbash.so"
+    private val prootDistroScript = "$prefixDir/bin/proot-distro"
 
     fun buildLoginCommand(
         startupScript: String,
         bindSdcard: Boolean = false
     ): List<String> {
+        // Run proot-distro as a bash script via the native lib bash binary
         val cmd = mutableListOf(
-            prootDistroPath,
+            bashPath,
+            prootDistroScript,
             "login", distroName,
             "--shared-tmp"
         )
@@ -29,7 +36,8 @@ class ProotCommandBuilder(
 
     fun buildInstallCommand(tarballPath: String): List<String> {
         return listOf(
-            prootDistroPath,
+            bashPath,
+            prootDistroScript,
             "install",
             "--override-alias", distroName,
             tarballPath
@@ -42,7 +50,12 @@ class ProotCommandBuilder(
             "XDG_RUNTIME_DIR" to "/tmp",
             "DISPLAY" to ":0",
             "DBUS_SESSION_BUS_ADDRESS" to "unix:path=/tmp/dbus-session",
-            "PULSE_SERVER" to "tcp:127.0.0.1:4713"
+            "PULSE_SERVER" to "tcp:127.0.0.1:4713",
+            // proot-distro needs to find proot binary in nativeLibDir
+            "PROOT_EXEC" to "$nativeLibDir/libproot.so",
+            "PREFIX" to prefixDir,
+            "HOME" to "$prefixDir/home",
+            "PATH" to "$nativeLibDir:$prefixDir/bin:/usr/bin:/bin"
         )
     }
 }

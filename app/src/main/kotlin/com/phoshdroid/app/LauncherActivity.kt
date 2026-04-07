@@ -129,8 +129,10 @@ class LauncherActivity : AppCompatActivity() {
         statusText.text = getString(R.string.preparing_desktop)
         progressBar.visibility = View.GONE
 
+        val nativeLibDir = applicationInfo.nativeLibraryDir
         val commandBuilder = ProotCommandBuilder(
-            prootDistroPath = "${filesDir}/usr/bin/proot-distro",
+            nativeLibDir = nativeLibDir,
+            prefixDir = "${filesDir}/usr",
             distroName = ProotService.DISTRO_NAME
         )
         val manager = ProotDistroManager(
@@ -140,16 +142,28 @@ class LauncherActivity : AppCompatActivity() {
         )
 
         if (!manager.isInstalled()) {
-            // For now, set up the directory structure directly rather than
-            // calling proot-distro binary (Android 15+ blocks exec from app data).
-            // TODO: Use Termux's native lib approach for real binary execution.
-            withContext(Dispatchers.IO) {
-                val distroDir = File(filesDir, "proot-distro/installed-rootfs/postmarketos")
-                distroDir.mkdirs()
-                // Copy rootfs contents into the proot-distro expected location
-                File(filesDir, "rootfs").listFiles()?.forEach { file ->
-                    if (file.name != ".extraction_complete") {
-                        file.copyRecursively(File(distroDir, file.name), overwrite = true)
+            // Check if bash binary exists in native lib dir
+            val bashExists = File(nativeLibDir, "libbash.so").exists()
+            if (bashExists) {
+                val installOk = withContext(Dispatchers.IO) {
+                    val result = manager.install()
+                    if (result.exitCode != 0) {
+                        withContext(Dispatchers.Main) {
+                            showError("proot-distro install failed:\n${result.output}", copyable = true)
+                        }
+                        false
+                    } else true
+                }
+                if (!installOk) return
+            } else {
+                // No real bootstrap yet — set up directory structure directly
+                withContext(Dispatchers.IO) {
+                    val distroDir = File(filesDir, "proot-distro/installed-rootfs/postmarketos")
+                    distroDir.mkdirs()
+                    File(filesDir, "rootfs").listFiles()?.forEach { file ->
+                        if (file.name != ".extraction_complete") {
+                            file.copyRecursively(File(distroDir, file.name), overwrite = true)
+                        }
                     }
                 }
             }

@@ -14,15 +14,17 @@ class ProotDistroManagerTest {
     private fun createManager(
         processRunner: ProcessRunner = mockk(relaxed = true)
     ): ProotDistroManager {
+        val nativeLibDir = File(tempDir, "lib").also { it.mkdirs() }
         val prefixDir = File(tempDir, "usr").also { it.mkdirs() }
         val rootfsDir = File(tempDir, "rootfs").also { it.mkdirs() }
         return ProotDistroManager(
             commandBuilder = ProotCommandBuilder(
-                prootDistroPath = "${prefixDir.absolutePath}/bin/proot-distro",
+                nativeLibDir = nativeLibDir.absolutePath,
+                prefixDir = prefixDir.absolutePath,
                 distroName = "postmarketos"
             ),
             installedRootfsDir = File(tempDir, "proot-distro/installed-rootfs"),
-            rootfsTarball = File(rootfsDir, "rootfs.tar.zst"),
+            rootfsTarball = File(rootfsDir, "rootfs.tar"),
             processRunner = processRunner
         )
     }
