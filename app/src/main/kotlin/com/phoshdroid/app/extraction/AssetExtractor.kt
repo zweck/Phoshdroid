@@ -1,9 +1,9 @@
 package com.phoshdroid.app.extraction
 
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import com.github.luben.zstd.ZstdInputStream
 import java.io.File
 import java.io.InputStream
+import java.io.BufferedInputStream
 
 class AssetExtractor {
 
@@ -28,24 +28,22 @@ class AssetExtractor {
                 onProgress(percent)
             }
         }.let { counting ->
-            ZstdInputStream(counting).use { zstd ->
-                TarArchiveInputStream(zstd).use { tar ->
-                    var entry = tar.nextEntry
-                    while (entry != null) {
-                        val outFile = File(targetDir, entry.name)
-                        if (entry.isDirectory) {
-                            outFile.mkdirs()
-                        } else {
-                            outFile.parentFile?.mkdirs()
-                            outFile.outputStream().use { out ->
-                                tar.copyTo(out)
-                            }
-                            if (entry.mode and 0b001_001_001 != 0) {
-                                outFile.setExecutable(true)
-                            }
+            TarArchiveInputStream(BufferedInputStream(counting)).use { tar ->
+                var entry = tar.nextEntry
+                while (entry != null) {
+                    val outFile = File(targetDir, entry.name)
+                    if (entry.isDirectory) {
+                        outFile.mkdirs()
+                    } else {
+                        outFile.parentFile?.mkdirs()
+                        outFile.outputStream().use { out ->
+                            tar.copyTo(out)
                         }
-                        entry = tar.nextEntry
+                        if (entry.mode and 0b001_001_001 != 0) {
+                            outFile.setExecutable(true)
+                        }
                     }
+                    entry = tar.nextEntry
                 }
             }
         }

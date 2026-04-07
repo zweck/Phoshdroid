@@ -1,7 +1,6 @@
 package com.phoshdroid.app.extraction
 
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
-import com.github.luben.zstd.ZstdOutputStream
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -14,17 +13,15 @@ class AssetExtractorTest {
     @TempDir
     lateinit var tempDir: File
 
-    private fun createTarZst(files: Map<String, ByteArray>): ByteArray {
+    private fun createTar(files: Map<String, ByteArray>): ByteArray {
         val baos = ByteArrayOutputStream()
-        ZstdOutputStream(baos).use { zstd ->
-            TarArchiveOutputStream(zstd).use { tar ->
-                for ((name, content) in files) {
-                    val entry = tar.createArchiveEntry(File(name), name)
-                    entry.size = content.size.toLong()
-                    tar.putArchiveEntry(entry)
-                    tar.write(content)
-                    tar.closeArchiveEntry()
-                }
+        TarArchiveOutputStream(baos).use { tar ->
+            for ((name, content) in files) {
+                val entry = tar.createArchiveEntry(File(name), name)
+                entry.size = content.size.toLong()
+                tar.putArchiveEntry(entry)
+                tar.write(content)
+                tar.closeArchiveEntry()
             }
         }
         return baos.toByteArray()
@@ -33,7 +30,7 @@ class AssetExtractorTest {
     @Test
     fun `extracts single file from tar zst`() {
         val content = "hello world".toByteArray()
-        val archive = createTarZst(mapOf("test.txt" to content))
+        val archive = createTar(mapOf("test.txt" to content))
 
         val extractor = AssetExtractor()
         extractor.extract(
@@ -49,7 +46,7 @@ class AssetExtractorTest {
 
     @Test
     fun `extracts nested directory structure`() {
-        val archive = createTarZst(mapOf(
+        val archive = createTar(mapOf(
             "usr/bin/hello" to "#!/bin/sh".toByteArray(),
             "etc/config" to "key=value".toByteArray()
         ))
@@ -68,7 +65,7 @@ class AssetExtractorTest {
     @Test
     fun `reports progress during extraction`() {
         val largeContent = ByteArray(10_000) { it.toByte() }
-        val archive = createTarZst(mapOf("big.bin" to largeContent))
+        val archive = createTar(mapOf("big.bin" to largeContent))
 
         val progressValues = mutableListOf<Int>()
         val extractor = AssetExtractor()
@@ -88,7 +85,7 @@ class AssetExtractorTest {
 
     @Test
     fun `skips extraction if marker file exists`() {
-        val archive = createTarZst(mapOf("test.txt" to "hello".toByteArray()))
+        val archive = createTar(mapOf("test.txt" to "hello".toByteArray()))
 
         File(tempDir, ".extraction_complete").createNewFile()
 

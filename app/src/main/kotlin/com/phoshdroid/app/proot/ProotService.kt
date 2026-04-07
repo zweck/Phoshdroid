@@ -28,7 +28,7 @@ class ProotService : Service() {
         manager = ProotDistroManager(
             commandBuilder = commandBuilder,
             installedRootfsDir = File(filesDir, "proot-distro/installed-rootfs"),
-            rootfsTarball = File(filesDir, "rootfs/rootfs.tar.zst")
+            rootfsTarball = File(filesDir, "rootfs/rootfs.tar.gz")
         )
     }
 

@@ -17,6 +17,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    androidResources {
+        noCompress += listOf("zst", "gz")
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -59,7 +63,6 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.constraintlayout:constraintlayout:2.2.0")
     implementation(libs.commons.compress)
-    implementation(libs.zstd.jni)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
 
