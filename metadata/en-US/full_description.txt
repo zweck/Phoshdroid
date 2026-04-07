@@ -1,0 +1,15 @@
+Phoshdroid brings a full postmarketOS desktop (Phosh) to any Android 12+ device,
+without requiring root access.
+
+Features:
+- One-tap setup — everything bundled in a single APK
+- Full Phosh desktop environment (GNOME-based, touch-friendly)
+- Wayland compositor via embedded Termux:X11
+- Runs on top of proot — no root or bootloader unlock needed
+- Configurable: resolution scaling, DPI, orientation
+- Optional alternative DEs: XFCE4, Sxmo, Plasma Mobile
+- Terminal access for power users
+
+Phoshdroid embeds a minimal Termux environment and uses proot-distro to run
+a real postmarketOS (Alpine Linux-based) filesystem. The Phosh desktop renders
+through a Wayland compositor directly to an Android surface.
