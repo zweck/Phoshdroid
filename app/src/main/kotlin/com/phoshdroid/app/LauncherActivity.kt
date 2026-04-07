@@ -132,15 +132,18 @@ class LauncherActivity : AppCompatActivity() {
         )
 
         if (!manager.isInstalled()) {
-            withContext(Dispatchers.IO) {
+            val installOk = withContext(Dispatchers.IO) {
                 val result = manager.install()
                 if (result.exitCode != 0) {
                     withContext(Dispatchers.Main) {
                         showError("proot-distro install failed:\n${result.output}", copyable = true)
                     }
-                    return@withContext
+                    false
+                } else {
+                    true
                 }
             }
+            if (!installOk) return
         }
 
         // Phase 4: Write config
@@ -154,7 +157,7 @@ class LauncherActivity : AppCompatActivity() {
 
         // Wait for Wayland socket to appear (up to 15 seconds)
         withContext(Dispatchers.IO) {
-            val socketFile = File(filesDir, "tmp/wayland-0")
+            val socketFile = File(filesDir, "usr/tmp/wayland-0")
             var attempts = 0
             while (!socketFile.exists() && attempts < 30) {
                 Thread.sleep(500)
