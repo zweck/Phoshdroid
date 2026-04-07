@@ -1,0 +1,10 @@
+#!/bin/bash
+# Pre-push hook: runs unit tests before pushing.
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+echo "Running unit tests..."
+./gradlew :app:test --quiet
+
+echo "All checks passed."
