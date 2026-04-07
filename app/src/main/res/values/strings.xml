@@ -12,4 +12,41 @@
     <string name="error_no_space">Not enough storage space. Need %1$s, have %2$s.</string>
     <string name="error_proot_failed">proot failed to start. Tap to copy logs.</string>
     <string name="welcome_toast">Pull down from top for Phosh settings. Access Phoshdroid settings from the notification.</string>
+
+    <string-array name="scale_entries">
+        <item>0.5x</item>
+        <item>0.75x</item>
+        <item>1.0x (native)</item>
+        <item>1.5x</item>
+    </string-array>
+    <string-array name="scale_values">
+        <item>0.5</item>
+        <item>0.75</item>
+        <item>1.0</item>
+        <item>1.5</item>
+    </string-array>
+
+    <string-array name="orientation_entries">
+        <item>Auto</item>
+        <item>Landscape</item>
+        <item>Portrait</item>
+    </string-array>
+    <string-array name="orientation_values">
+        <item>auto</item>
+        <item>landscape</item>
+        <item>portrait</item>
+    </string-array>
+
+    <string-array name="de_entries">
+        <item>Phosh</item>
+        <item>XFCE4</item>
+        <item>Sxmo</item>
+        <item>Plasma Mobile</item>
+    </string-array>
+    <string-array name="de_values">
+        <item>phosh</item>
+        <item>xfce4</item>
+        <item>sxmo</item>
+        <item>plasma-mobile</item>
+    </string-array>
 </resources>

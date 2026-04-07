@@ -40,14 +40,13 @@ class LauncherActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // TODO: Task 9 — uncomment when SettingsFragment is implemented
-        // if (intent?.action == ACTION_SETTINGS) {
-        //     setContentView(R.layout.activity_launcher)
-        //     supportFragmentManager.beginTransaction()
-        //         .replace(android.R.id.content, SettingsFragment())
-        //         .commit()
-        //     return
-        // }
+        if (intent?.action == ACTION_SETTINGS) {
+            setContentView(R.layout.activity_launcher)
+            supportFragmentManager.beginTransaction()
+                .replace(android.R.id.content, SettingsFragment())
+                .commit()
+            return
+        }
 
         setContentView(R.layout.activity_launcher)
         statusText = findViewById(R.id.statusText)

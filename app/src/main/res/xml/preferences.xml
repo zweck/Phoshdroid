@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory app:title="Display">
+        <ListPreference
+            app:key="scale_factor"
+            app:title="Resolution Scale"
+            app:entries="@array/scale_entries"
+            app:entryValues="@array/scale_values"
+            app:defaultValue="1.0" />
+
+        <ListPreference
+            app:key="orientation"
+            app:title="Orientation"
+            app:entries="@array/orientation_entries"
+            app:entryValues="@array/orientation_values"
+            app:defaultValue="auto" />
+
+        <EditTextPreference
+            app:key="dpi_override"
+            app:title="DPI Override"
+            app:summary="Leave empty for auto-detection" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Desktop Environment">
+        <ListPreference
+            app:key="de"
+            app:title="Desktop Environment"
+            app:entries="@array/de_entries"
+            app:entryValues="@array/de_values"
+            app:defaultValue="phosh"
+            app:summary="Changing DE will install packages on next launch" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Storage">
+        <SwitchPreferenceCompat
+            app:key="bind_sdcard"
+            app:title="Mount /sdcard"
+            app:summary="Access Android storage from postmarketOS at ~/sdcard"
+            app:defaultValue="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Advanced">
+        <SwitchPreferenceCompat
+            app:key="show_terminal"
+            app:title="Show Terminal Panel"
+            app:summary="Pull-up terminal for shell access inside proot"
+            app:defaultValue="false" />
+
+        <EditTextPreference
+            app:key="custom_startup"
+            app:title="Custom Startup Script"
+            app:summary="Path to script run before Phosh (inside rootfs)" />
+
+        <Preference
+            app:key="reset_factory"
+            app:title="Reset to Factory"
+            app:summary="Re-extract rootfs from bundled image" />
+    </PreferenceCategory>
+
+</PreferenceScreen>
