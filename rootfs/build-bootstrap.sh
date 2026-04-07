@@ -35,10 +35,13 @@ cd "$STAGING_DIR"
 unzip -q bootstrap.zip -d prefix
 
 # Fix symlinks (Termux stores them in SYMLINKS.txt)
+# Format: target←link_path (link_path points to target)
 if [ -f prefix/SYMLINKS.txt ]; then
-    while IFS='←' read -r dest src; do
-        rm -f "prefix/$dest"
-        ln -s "$src" "prefix/$dest"
+    while IFS='←' read -r target linkpath; do
+        # linkpath is relative to prefix (e.g., ./lib/libfoo.so)
+        rm -f "prefix/$linkpath"
+        mkdir -p "$(dirname "prefix/$linkpath")"
+        ln -sf "$target" "prefix/$linkpath"
     done < prefix/SYMLINKS.txt
     rm -f prefix/SYMLINKS.txt
 fi
