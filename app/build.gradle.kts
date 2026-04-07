@@ -66,9 +66,8 @@ dependencies {
     // Termux modules
     implementation(project(":terminal-emulator"))
     implementation(project(":termux-shared"))
-    // termux-x11-app is an application module (standalone APK), not a library.
-    // It is co-built in this multi-module project and launched via explicit Intent at runtime.
-    // implementation(project(":termux-x11-app"))  // cannot impl an application module
+    // termux-x11-app converted to library module so we can embed it in the same APK
+    implementation(project(":termux-x11-app"))
 
     testImplementation(libs.junit5.api)
     testRuntimeOnly(libs.junit5.engine)

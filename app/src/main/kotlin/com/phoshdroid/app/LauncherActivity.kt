@@ -148,11 +148,22 @@ class LauncherActivity : AppCompatActivity() {
         val configFile = File(filesDir, "proot-distro/installed-rootfs/postmarketos/etc/phoshdroid/config")
         ProotConfigWriter(configFile).write(prefs.toProotConfig())
 
-        // Phase 5: Start service
+        // Phase 5: Start ProotService and launch Wayland
         statusText.text = getString(R.string.starting_desktop)
         ProotService.start(this)
 
-        // TODO: Launch WaylandActivity (Task 10)
+        // Wait for Wayland socket to appear (up to 15 seconds)
+        withContext(Dispatchers.IO) {
+            val socketFile = File(filesDir, "tmp/wayland-0")
+            var attempts = 0
+            while (!socketFile.exists() && attempts < 30) {
+                Thread.sleep(500)
+                attempts++
+            }
+        }
+
+        val waylandIntent = Intent(this, Class.forName("com.termux.x11.MainActivity"))
+        startActivity(waylandIntent)
         Toast.makeText(this, getString(R.string.welcome_toast), Toast.LENGTH_LONG).show()
     }
 
