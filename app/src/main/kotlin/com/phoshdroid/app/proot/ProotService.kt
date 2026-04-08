@@ -22,15 +22,16 @@ class ProotService : Service() {
         super.onCreate()
         val filesDir = applicationContext.filesDir
         val nativeLibDir = applicationInfo.nativeLibraryDir
+        val prefixDir = "${filesDir}/usr"
         val commandBuilder = ProotCommandBuilder(
             nativeLibDir = nativeLibDir,
-            prefixDir = "${filesDir}/usr",
+            prefixDir = prefixDir,
             distroName = DISTRO_NAME
         )
         manager = ProotDistroManager(
             commandBuilder = commandBuilder,
-            installedRootfsDir = File(filesDir, "proot-distro/installed-rootfs"),
-            rootfsTarball = File(filesDir, "rootfs/rootfs.tar.gz")
+            installedRootfsDir = File(prefixDir, "var/lib/proot-distro/installed-rootfs"),
+            rootfsTarball = File(filesDir, "rootfs/rootfs.tar")
         )
     }
 
@@ -62,19 +63,33 @@ class ProotService : Service() {
         val prefs = PhoshdroidPreferences(this)
         val startupScript = prefs.customStartupScript ?: DEFAULT_STARTUP_SCRIPT
 
+        android.util.Log.i("ProotService", "Starting proot with script: $startupScript")
         prootProcess = manager?.login(
             startupScript = startupScript,
             bindSdcard = prefs.bindSdcard
         )
 
         Thread {
+            // Capture proot stdout/stderr
+            val output = prootProcess?.inputStream?.bufferedReader()?.readText() ?: ""
             val exitCode = prootProcess?.waitFor() ?: -1
+            android.util.Log.i("ProotService", "proot exited ($exitCode): $output")
+
+            // Write to a file for debugging
+            try {
+                java.io.File(applicationContext.filesDir, "usr/tmp/proot-exit.log").writeText(
+                    "exit=$exitCode\n$output"
+                )
+            } catch (_: Exception) {}
+
             if (exitCode != 0) {
                 prootProcess = manager?.login(
                     startupScript = startupScript,
                     bindSdcard = prefs.bindSdcard
                 )
+                val retryOutput = prootProcess?.inputStream?.bufferedReader()?.readText() ?: ""
                 val retryCode = prootProcess?.waitFor() ?: -1
+                android.util.Log.i("ProotService", "proot retry exited ($retryCode): $retryOutput")
                 if (retryCode != 0) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()

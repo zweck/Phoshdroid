@@ -1,9 +1,10 @@
 package com.phoshdroid.app.extraction
 
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.InputStream
-import java.io.BufferedInputStream
+import java.util.zip.GZIPInputStream
 
 class AssetExtractor {
 
@@ -28,12 +29,18 @@ class AssetExtractor {
                 onProgress(percent)
             }
         }.let { counting ->
-            TarArchiveInputStream(BufferedInputStream(counting)).use { tar ->
+            TarArchiveInputStream(GZIPInputStream(BufferedInputStream(counting))).use { tar ->
                 var entry = tar.nextEntry
                 while (entry != null) {
                     val outFile = File(targetDir, entry.name)
                     if (entry.isDirectory) {
                         outFile.mkdirs()
+                    } else if (entry.isSymbolicLink) {
+                        outFile.parentFile?.mkdirs()
+                        outFile.delete()
+                        Runtime.getRuntime().exec(
+                            arrayOf("ln", "-sf", entry.linkName, outFile.absolutePath)
+                        ).waitFor()
                     } else {
                         outFile.parentFile?.mkdirs()
                         outFile.outputStream().use { out ->

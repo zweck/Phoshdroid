@@ -1,6 +1,7 @@
 package com.phoshdroid.app.extraction
 
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
+import java.util.zip.GZIPOutputStream
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -15,13 +16,15 @@ class AssetExtractorTest {
 
     private fun createTar(files: Map<String, ByteArray>): ByteArray {
         val baos = ByteArrayOutputStream()
-        TarArchiveOutputStream(baos).use { tar ->
-            for ((name, content) in files) {
-                val entry = tar.createArchiveEntry(File(name), name)
-                entry.size = content.size.toLong()
-                tar.putArchiveEntry(entry)
-                tar.write(content)
-                tar.closeArchiveEntry()
+        GZIPOutputStream(baos).use { gz ->
+            TarArchiveOutputStream(gz).use { tar ->
+                for ((name, content) in files) {
+                    val entry = tar.createArchiveEntry(File(name), name)
+                    entry.size = content.size.toLong()
+                    tar.putArchiveEntry(entry)
+                    tar.write(content)
+                    tar.closeArchiveEntry()
+                }
             }
         }
         return baos.toByteArray()

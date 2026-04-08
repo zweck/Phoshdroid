@@ -83,7 +83,7 @@ class LauncherActivity : AppCompatActivity() {
             showProgress(getString(R.string.extracting_termux))
             progressBar.isIndeterminate = true
             val extracted = withContext(Dispatchers.IO) {
-                assets.open("bootstrap.tar").use { input ->
+                assets.open("bootstrap.bin").use { input ->
                     extractor.extract(input, -1, bootstrapDir)
                 }
             }
@@ -92,9 +92,19 @@ class LauncherActivity : AppCompatActivity() {
                 return
             }
         }
-        // Ensure extracted binaries are executable (runs every launch)
+        // Create symlinks from prefix/bin to native lib dir binaries
+        // (native lib dir is the only place Android allows exec)
+        val nativeLibDir = applicationInfo.nativeLibraryDir
         withContext(Dispatchers.IO) {
-            File(bootstrapDir, "bin").walkTopDown().filter { it.isFile }.forEach { it.setExecutable(true) }
+            val binDir = File(bootstrapDir, "bin")
+            binDir.mkdirs()
+            mapOf("bash" to "libbash.so", "proot" to "libproot.so").forEach { (name, soName) ->
+                val link = File(binDir, name)
+                val target = File(nativeLibDir, soName)
+                if (target.exists() && !link.exists()) {
+                    Runtime.getRuntime().exec(arrayOf("ln", "-sf", target.absolutePath, link.absolutePath)).waitFor()
+                }
+            }
         }
 
         // Phase 2: Extract pmOS rootfs
@@ -115,7 +125,7 @@ class LauncherActivity : AppCompatActivity() {
 
             progressBar.isIndeterminate = true
             val extracted = withContext(Dispatchers.IO) {
-                assets.open("rootfs.tar").use { input ->
+                assets.open("rootfs.bin").use { input ->
                     extractor.extract(input, -1, rootfsExtractDir)
                 }
             }
@@ -125,62 +135,53 @@ class LauncherActivity : AppCompatActivity() {
             }
         }
 
-        // Phase 3: Register with proot-distro
+        // Phase 3: Set up rootfs for proot (bypass proot-distro, call proot directly)
         statusText.text = getString(R.string.preparing_desktop)
         progressBar.visibility = View.GONE
 
-        val nativeLibDir = applicationInfo.nativeLibraryDir
-        val commandBuilder = ProotCommandBuilder(
-            nativeLibDir = nativeLibDir,
-            prefixDir = "${filesDir}/usr",
-            distroName = ProotService.DISTRO_NAME
-        )
-        val manager = ProotDistroManager(
-            commandBuilder = commandBuilder,
-            installedRootfsDir = File(filesDir, "proot-distro/installed-rootfs"),
-            rootfsTarball = File(rootfsExtractDir, "rootfs.tar")
-        )
-
-        if (!manager.isInstalled()) {
-            // Check if bash binary exists in native lib dir
-            val bashExists = File(nativeLibDir, "libbash.so").exists()
-            if (bashExists) {
-                val installOk = withContext(Dispatchers.IO) {
-                    val result = manager.install()
-                    if (result.exitCode != 0) {
-                        withContext(Dispatchers.Main) {
-                            showError("proot-distro install failed:\n${result.output}", copyable = true)
-                        }
-                        false
-                    } else true
-                }
-                if (!installOk) return
-            } else {
-                // No real bootstrap yet — set up directory structure directly
-                withContext(Dispatchers.IO) {
-                    val distroDir = File(filesDir, "proot-distro/installed-rootfs/postmarketos")
-                    distroDir.mkdirs()
-                    File(filesDir, "rootfs").listFiles()?.forEach { file ->
-                        if (file.name != ".extraction_complete") {
-                            file.copyRecursively(File(distroDir, file.name), overwrite = true)
-                        }
+        val prefixDir = "${filesDir}/usr"
+        val rootfsDir = File(prefixDir, "var/lib/proot-distro/installed-rootfs/${ProotService.DISTRO_NAME}")
+        if (!rootfsDir.exists()) {
+            withContext(Dispatchers.IO) {
+                rootfsDir.mkdirs()
+                // Move extracted rootfs into proot's expected location
+                File(filesDir, "rootfs").listFiles()?.forEach { file ->
+                    if (file.name != ".extraction_complete") {
+                        file.renameTo(File(rootfsDir, file.name))
                     }
                 }
             }
         }
+
+        // Ensure shared tmp dir exists for Wayland socket
+        File(prefixDir, "tmp").mkdirs()
 
         // Phase 4: Write config
         val prefs = PhoshdroidPreferences(this)
         val configFile = File(filesDir, "proot-distro/installed-rootfs/postmarketos/etc/phoshdroid/config")
         ProotConfigWriter(configFile).write(prefs.toProotConfig())
 
-        // Phase 5: Setup complete — show success
-        // TODO: Start ProotService and launch WaylandActivity once real
-        // Termux bootstrap is in place. Android 15+ blocks exec from app
-        // data dir — need to use Termux's native lib extraction approach.
-        statusText.text = "Setup complete! Tap notification for settings."
-        statusText.visibility = View.VISIBLE
-        progressBar.visibility = View.GONE
+        // Phase 5: Start ProotService and launch Wayland
+        statusText.text = getString(R.string.starting_desktop)
+        ProotService.start(this)
+
+        // Wait for Wayland socket to appear (up to 15 seconds)
+        withContext(Dispatchers.IO) {
+            val socketFile = File(filesDir, "usr/tmp/wayland-0")
+            var attempts = 0
+            while (!socketFile.exists() && attempts < 30) {
+                Thread.sleep(500)
+                attempts++
+            }
+        }
+
+        try {
+            val waylandIntent = Intent(this, Class.forName("com.termux.x11.MainActivity"))
+            startActivity(waylandIntent)
+        } catch (e: Exception) {
+            // WaylandActivity may not be ready yet — show status instead
+            statusText.text = "Desktop starting... Check notification."
+        }
         Toast.makeText(this, getString(R.string.welcome_toast), Toast.LENGTH_LONG).show()
     }
 

@@ -39,13 +39,6 @@ class ProotDistroManager(
 
     fun isInstalled(): Boolean = distroDir.exists() && distroDir.isDirectory
 
-    fun install(): ProcessResult {
-        return processRunner.run(
-            commandBuilder.buildInstallCommand(rootfsTarball.absolutePath),
-            commandBuilder.buildEnvironment()
-        )
-    }
-
     fun login(
         startupScript: String,
         bindSdcard: Boolean = false

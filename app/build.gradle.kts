@@ -18,7 +18,7 @@ android {
     }
 
     androidResources {
-        noCompress += listOf("zst", "gz")
+        noCompress += listOf("zst", "gz", "tar", "bin")
     }
 
     buildTypes {
@@ -38,6 +38,7 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        jniLibs.useLegacyPackaging = true
     }
 
     testOptions {
