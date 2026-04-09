@@ -35,8 +35,15 @@
              Override exported=false so it is not accessible outside this APK. -->
         <activity
             android:name="com.termux.x11.MainActivity"
-            android:exported="false"
-            tools:replace="android:exported" />
+            android:exported="true"
+            android:launchMode="singleTask"
+            tools:replace="android:exported,android:launchMode" />
+
+        <!-- Prevent LoriePreferences from auto-launching -->
+        <activity
+            android:name="com.termux.x11.LoriePreferences"
+            android:enabled="false"
+            tools:replace="android:enabled" />
 
     </application>
 </manifest>

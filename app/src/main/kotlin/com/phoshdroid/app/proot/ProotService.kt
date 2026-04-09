@@ -22,6 +22,7 @@ class ProotService : Service() {
         super.onCreate()
         val filesDir = applicationContext.filesDir
         val nativeLibDir = applicationInfo.nativeLibraryDir
+        android.util.Log.e("ProotService", "nativeLibDir=$nativeLibDir")
         val prefixDir = "${filesDir}/usr"
         val commandBuilder = ProotCommandBuilder(
             nativeLibDir = nativeLibDir,

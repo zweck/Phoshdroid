@@ -27,7 +27,10 @@ class ProotCommandBuilder(
             "-b", "/dev",
             "-b", "/proc",
             "-b", "/sys",
-            "-b", "$prefixDir/tmp:/tmp"
+            "-b", "$prefixDir/tmp:/tmp",
+            "-b", "$prefixDir/tmp:/dev/shm",
+            // Bind nativeLibDir so glycin can exec its loaders from there
+            "-b", "$nativeLibDir:/opt/nativelib"
         )
 
         if (bindSdcard) {
