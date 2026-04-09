@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.StatFs
+import android.system.Os
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
@@ -161,26 +162,70 @@ class LauncherActivity : AppCompatActivity() {
         val configFile = File(filesDir, "proot-distro/installed-rootfs/postmarketos/etc/phoshdroid/config")
         ProotConfigWriter(configFile).write(prefs.toProotConfig())
 
-        // Phase 5: Start ProotService and launch Wayland
+        // Phase 5: Start X11 server, then proot, then launch display activity
         statusText.text = getString(R.string.starting_desktop)
-        ProotService.start(this)
 
-        // Wait for Wayland socket to appear (up to 15 seconds)
-        withContext(Dispatchers.IO) {
-            val socketFile = File(filesDir, "usr/tmp/wayland-0")
-            var attempts = 0
-            while (!socketFile.exists() && attempts < 30) {
-                Thread.sleep(500)
-                attempts++
+        // Start the Termux:X11 server
+        val tmpDir = File(prefixDir, "tmp")
+        tmpDir.mkdirs()
+        File(tmpDir, ".X11-unix").mkdirs()
+        try {
+            Os.setenv("TMPDIR", tmpDir.absolutePath, true)
+            Os.setenv("TERMUX_X11_OVERRIDE_PACKAGE", packageName, true)
+            // XKB keyboard config from the rootfs
+            val xkbDir = File(rootfsDir, "usr/share/X11/xkb")
+            if (xkbDir.exists()) {
+                Os.setenv("XKB_CONFIG_ROOT", xkbDir.absolutePath, true)
             }
+            android.util.Log.e("Phoshdroid", "=== Phase 5: About to start X11 server ===")
+
+            // First test: can we even load the CmdEntryPoint class?
+            val cls = Class.forName("com.termux.x11.CmdEntryPoint")
+            android.util.Log.e("Phoshdroid", "CmdEntryPoint class loaded OK: ${cls.name}")
+
+            Thread({
+                android.os.Looper.prepare()
+                try {
+                    val ctor = com.termux.x11.CmdEntryPoint::class.java
+                        .getDeclaredConstructor(Array<String>::class.java)
+                    ctor.isAccessible = true
+                    android.util.Log.e("Phoshdroid", "TMPDIR=${Os.getenv("TMPDIR")}")
+                    ctor.newInstance(arrayOf(":0"))
+                    android.util.Log.e("Phoshdroid", "X11 server started OK")
+                    android.os.Looper.loop()
+                } catch (e: Throwable) {
+                    android.util.Log.e("Phoshdroid", "X11 server failed: ${e.message}", e)
+                }
+            }, "X11Server").start()
+
+            // Wait for X11 socket to appear
+            withContext(Dispatchers.IO) {
+                val socketFile = File(prefixDir, "tmp/.X11-unix/X0")
+                var attempts = 0
+                while (!socketFile.exists() && attempts < 20) {
+                    Thread.sleep(500)
+                    attempts++
+                }
+                android.util.Log.e("Phoshdroid", "X11 socket exists: ${socketFile.exists()}")
+            }
+        } catch (e: Throwable) {
+            android.util.Log.e("Phoshdroid", "X11 setup failed", e)
         }
 
+        // Start proot BEFORE launching display activity (so phoc can connect to X11)
+        android.util.Log.e("Phoshdroid", "Starting ProotService...")
+        ProotService.start(this)
+
+        // Give proot a moment to start phoc
+        withContext(Dispatchers.IO) { Thread.sleep(2000) }
+
+        // Launch the X11 display activity
+        android.util.Log.e("Phoshdroid", "Launching X11 activity...")
         try {
             val waylandIntent = Intent(this, Class.forName("com.termux.x11.MainActivity"))
             startActivity(waylandIntent)
         } catch (e: Exception) {
-            // WaylandActivity may not be ready yet — show status instead
-            statusText.text = "Desktop starting... Check notification."
+            statusText.text = "Display failed: ${e.message}"
         }
         Toast.makeText(this, getString(R.string.welcome_toast), Toast.LENGTH_LONG).show()
     }
