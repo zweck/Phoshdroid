@@ -22,6 +22,14 @@ export WLR_LOG_LEVEL=debug
 export WAYLAND_DEBUG=server
 export GIO_USE_VFS=local
 
+# Firefox content-process sandbox uses clone3/unshare/seccomp — none of which
+# proot can emulate. Without these, every tab SIGSEGVs before it loads. Also
+# covers the RDD (rendering), GMP (media), and socket process siblings.
+export MOZ_DISABLE_CONTENT_SANDBOX=1
+export MOZ_DISABLE_RDD_SANDBOX=1
+export MOZ_DISABLE_GMP_SANDBOX=1
+export MOZ_DISABLE_SOCKET_PROCESS=1
+
 # Route gdk-pixbuf to 2.42. 2.44 loads SVGs via glycin, which spawns bwrap-
 # sandboxed loader subprocesses that can't run in our proot environment, and
 # phosh aborts on the first icon load.
