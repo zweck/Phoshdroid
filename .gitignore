@@ -10,6 +10,12 @@ local.properties
 # Android
 app/src/main/assets/rootfs.tar.zst
 app/src/main/assets/bootstrap.tar.zst
+# Build outputs — reproduced by rootfs/package-rootfs.sh + ndk build; far too
+# large for git (~700MB combined). Use ./rootfs/package-rootfs.sh to regenerate.
+app/src/main/assets/rootfs.bin
+app/src/main/assets/bootstrap.bin
+app/src/main/assets/rootfs.tar
+app/src/main/assets/bootstrap.tar
 
 # OS
 .DS_Store
