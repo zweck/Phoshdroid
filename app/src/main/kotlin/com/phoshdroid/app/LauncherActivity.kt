@@ -186,7 +186,24 @@ class LauncherActivity : AppCompatActivity() {
         // Start the Termux:X11 server
         val tmpDir = File(prefixDir, "tmp")
         tmpDir.mkdirs()
-        File(tmpDir, ".X11-unix").mkdirs()
+        val x11UnixDir = File(tmpDir, ".X11-unix")
+        x11UnixDir.mkdirs()
+        // Clean up stale X/Wayland/dbus sockets + lock files left behind when the
+        // previous app process was killed. Without this, the new in-process X
+        // server can't rebind :0 and phoc aborts with "Failed to open xcb
+        // connection" on the very first child launch.
+        listOf(
+            File(x11UnixDir, "X0"),
+            File(tmpDir, ".X0-lock"),
+            File(tmpDir, "wayland-0"),
+            File(tmpDir, "wayland-0.lock"),
+            File(tmpDir, "dbus-session")
+        ).forEach { stale ->
+            if (stale.exists()) {
+                android.util.Log.i("Phoshdroid", "Removing stale ${stale.name}")
+                stale.delete()
+            }
+        }
         try {
             Os.setenv("TMPDIR", tmpDir.absolutePath, true)
             Os.setenv("TERMUX_X11_OVERRIDE_PACKAGE", packageName, true)
