@@ -1,6 +1,6 @@
 # Phoshdroid
 
-![Phoshdroid](https://github.com/zweck/Phoshdroid/blob/main/docs/phoshdroid.mp4?raw=true)
+<video src="https://github.com/zweck/Phoshdroid/blob/main/docs/phoshdroid.mp4?raw=true" width="320" height="240" controls></video>
 
 **Phone + Linux, same screen, no root, no tears.**
 
