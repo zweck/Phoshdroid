@@ -8,10 +8,17 @@ mkdir -p /tmp /run /var/tmp /dev/shm /usr/lib/gdk-pixbuf-2.0/2.10.0 /home/user
 chmod 1777 /tmp /var/tmp /dev/shm 2>/dev/null
 chown -R user:user /home/user 2>/dev/null || true
 
-# Route gdk-pixbuf to 2.42. 2.44 uses glycin which requires bwrap and crashes
-# phosh in proot.
-if [ -f /usr/lib/libgdk_pixbuf-2.0.so.0.4200.12 ]; then
-    ln -sf libgdk_pixbuf-2.0.so.0.4200.12 /usr/lib/libgdk_pixbuf-2.0.so.0
+# Replace bwrap with a shim that strips sandbox flags and just execs the inner
+# command. bwrap's real sandboxing needs CLONE_NEWUSER + seccomp, which proot
+# can't emulate. glycin (used by gdk-pixbuf 2.44 for SVG loading) invokes
+# bwrap on every image load — without this shim, phosh aborts on the first
+# icon. Security is already a no-op under proot; the shim just makes the
+# expected command flow through.
+if [ -f /etc/phoshdroid/bwrap-shim.sh ] && [ -e /usr/bin/bwrap ]; then
+    chmod +x /etc/phoshdroid/bwrap-shim.sh
+    cp /usr/bin/bwrap /usr/bin/bwrap.real 2>/dev/null || true
+    cp /etc/phoshdroid/bwrap-shim.sh /usr/bin/bwrap
+    chmod +x /usr/bin/bwrap
 fi
 gdk-pixbuf-query-loaders > /usr/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache 2>/dev/null || true
 
