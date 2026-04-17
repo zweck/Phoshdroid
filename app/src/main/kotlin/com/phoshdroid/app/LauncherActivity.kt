@@ -54,6 +54,13 @@ class LauncherActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
         errorText = findViewById(R.id.errorText)
 
+        // Capture the launch-time display size. On foldables, unfolding/folding
+        // changes the window metrics but our proot session is already bound to
+        // the old size via XLORIE_{WIDTH,HEIGHT} + phoc.ini's `mode=WxH`. Phoc's
+        // wlroots X11 backend doesn't resize its window after creation, so the
+        // only way to follow the fold is to restart the whole session.
+        registerDisplayChangeRestart()
+
         requestNotificationPermission()
         lifecycleScope.launch {
             try {
@@ -62,6 +69,47 @@ class LauncherActivity : AppCompatActivity() {
                 showError("Startup failed: ${e.message}\n\n${e.stackTraceToString()}", copyable = true)
             }
         }
+    }
+
+    private fun registerDisplayChangeRestart() {
+        val metrics = resources.displayMetrics
+        val initialW = metrics.widthPixels
+        val initialH = metrics.heightPixels
+        val dm = getSystemService(android.hardware.display.DisplayManager::class.java) ?: return
+        val listener = object : android.hardware.display.DisplayManager.DisplayListener {
+            override fun onDisplayChanged(displayId: Int) {
+                val m = resources.displayMetrics
+                if (m.widthPixels != initialW || m.heightPixels != initialH) {
+                    android.util.Log.w(
+                        "Phoshdroid",
+                        "Display changed ${initialW}x${initialH} -> ${m.widthPixels}x${m.heightPixels}, restarting"
+                    )
+                    restartApp()
+                }
+            }
+            override fun onDisplayAdded(displayId: Int) {}
+            override fun onDisplayRemoved(displayId: Int) {}
+        }
+        dm.registerDisplayListener(listener, null)
+    }
+
+    private fun restartApp() {
+        try {
+            com.phoshdroid.app.proot.ProotService.stop(this)
+        } catch (_: Exception) {}
+        val restartIntent = packageManager.getLaunchIntentForPackage(packageName)
+        if (restartIntent != null) {
+            restartIntent.addFlags(
+                Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK
+            )
+            val pending = android.app.PendingIntent.getActivity(
+                this, 0, restartIntent, android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+            val am = getSystemService(android.app.AlarmManager::class.java)
+            am?.set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 200, pending)
+        }
+        finishAffinity()
+        android.os.Process.killProcess(android.os.Process.myPid())
     }
 
     private fun requestNotificationPermission() {
