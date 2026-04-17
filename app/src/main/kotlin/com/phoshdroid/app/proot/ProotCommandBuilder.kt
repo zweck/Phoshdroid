@@ -16,6 +16,7 @@ class ProotCommandBuilder(
         startupScript: String,
         bindSdcard: Boolean = false
     ): List<String> {
+        val fakeProc = "$rootfsDir/etc/phoshdroid/fake-proc"
         // Call proot directly — no bash wrapper needed since proot is in nativeLibDir
         val cmd = mutableListOf(
             prootPath,
@@ -30,7 +31,17 @@ class ProotCommandBuilder(
             "-b", "$prefixDir/tmp:/tmp",
             "-b", "$prefixDir/tmp:/dev/shm",
             // Bind nativeLibDir so glycin can exec its loaders from there
-            "-b", "$nativeLibDir:/opt/nativelib"
+            "-b", "$nativeLibDir:/opt/nativelib",
+            // Android SELinux blocks apps from reading /proc/stat, /proc/meminfo,
+            // /proc/loadavg, and the like. GNOME apps that use libgtop (kgx,
+            // localsearch, gnome-system-monitor) bail out or silently exit when
+            // these reads fail. Shadow them with static plausible values from the
+            // rootfs overlay — enough to satisfy the reads, not accurate.
+            "-b", "$fakeProc/stat:/proc/stat",
+            "-b", "$fakeProc/meminfo:/proc/meminfo",
+            "-b", "$fakeProc/loadavg:/proc/loadavg",
+            "-b", "$fakeProc/uptime:/proc/uptime",
+            "-b", "$fakeProc/cpuinfo:/proc/cpuinfo"
         )
 
         if (bindSdcard) {
