@@ -162,6 +162,24 @@ class LauncherActivity : AppCompatActivity() {
         val configFile = File(filesDir, "proot-distro/installed-rootfs/postmarketos/etc/phoshdroid/config")
         ProotConfigWriter(configFile).write(prefs.toProotConfig())
 
+        // Default Termux:X11 to direct-touch input mode — phone users expect finger
+        // taps to act as touches, not move a trackpad cursor. "3" = Direct touch.
+        // Also hide the additional keyboard toolbar so phosh owns the full surface
+        // height — its lockscreen unlock gesture needs to originate from the bottom edge.
+        androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+            .edit()
+            .putString("touchMode", "3")
+            // Keep the Termux:X11 shortcut toolbar (ESC, CTRL, arrows, etc.) visible.
+            // We carve out a bottom gap below phosh anyway for the edge swipe so the
+            // toolbar doesn't overlap phosh's usable area.
+            .putBoolean("showAdditionalKbd", true)
+            .putBoolean("additionalKbdVisible", true)
+            // Immersive sticky fullscreen — keeps Android nav bar hidden so bottom-edge
+            // swipes go to phosh instead of being consumed by the Android home gesture.
+            .putBoolean("fullscreen", true)
+            .putBoolean("hideCutout", true)
+            .apply()
+
         // Phase 5: Start X11 server, then proot, then launch display activity
         statusText.text = getString(R.string.starting_desktop)
 
@@ -177,28 +195,42 @@ class LauncherActivity : AppCompatActivity() {
             if (xkbDir.exists()) {
                 Os.setenv("XKB_CONFIG_ROOT", xkbDir.absolutePath, true)
             }
+            // Tell the X server to boot at the real device size so phoc's initial
+            // X11 output matches the surface. Phoc's X11 backend doesn't resize
+            // when the root window later changes.
+            // Leave a bottom gap below phosh's surface so a swipe that starts in
+            // that black area and enters phosh registers as an edge swipe — phosh's
+            // lockscreen unlock needs the gesture to begin at the surface's bottom.
+            val metrics = resources.displayMetrics
+            val dw = metrics.widthPixels
+            val dh = metrics.heightPixels - TOP_GAP_PX - BOTTOM_GAP_PX
+            if (dw > 0 && dh > 0) {
+                Os.setenv("XLORIE_WIDTH", dw.toString(), true)
+                Os.setenv("XLORIE_HEIGHT", dh.toString(), true)
+                android.util.Log.e("Phoshdroid", "XLORIE geometry: ${dw}x${dh}")
+            }
             android.util.Log.e("Phoshdroid", "=== Phase 5: About to start X11 server ===")
 
             // First test: can we even load the CmdEntryPoint class?
             val cls = Class.forName("com.termux.x11.CmdEntryPoint")
             android.util.Log.e("Phoshdroid", "CmdEntryPoint class loaded OK: ${cls.name}")
 
+            // Start X11 server with full constructor + Looper (needed for work queue)
             Thread({
                 android.os.Looper.prepare()
                 try {
                     val ctor = com.termux.x11.CmdEntryPoint::class.java
                         .getDeclaredConstructor(Array<String>::class.java)
                     ctor.isAccessible = true
-                    android.util.Log.e("Phoshdroid", "TMPDIR=${Os.getenv("TMPDIR")}")
                     ctor.newInstance(arrayOf(":0"))
-                    android.util.Log.e("Phoshdroid", "X11 server started OK")
-                    android.os.Looper.loop()
+                    android.util.Log.e("Phoshdroid", "X11 server running with Looper")
+                    android.os.Looper.loop() // Keep alive for work queue processing
                 } catch (e: Throwable) {
-                    android.util.Log.e("Phoshdroid", "X11 server failed: ${e.message}", e)
+                    android.util.Log.e("Phoshdroid", "X11 server error: ${e.message}", e)
                 }
             }, "X11Server").start()
 
-            // Wait for X11 socket to appear
+            // Wait for X11 socket
             withContext(Dispatchers.IO) {
                 val socketFile = File(prefixDir, "tmp/.X11-unix/X0")
                 var attempts = 0
@@ -212,21 +244,20 @@ class LauncherActivity : AppCompatActivity() {
             android.util.Log.e("Phoshdroid", "X11 setup failed", e)
         }
 
-        // Start proot BEFORE launching display activity (so phoc can connect to X11)
-        android.util.Log.e("Phoshdroid", "Starting ProotService...")
-        ProotService.start(this)
-
-        // Give proot a moment to start phoc
-        withContext(Dispatchers.IO) { Thread.sleep(2000) }
-
         // Launch the X11 display activity
         android.util.Log.e("Phoshdroid", "Launching X11 activity...")
         try {
             val waylandIntent = Intent(this, Class.forName("com.termux.x11.MainActivity"))
+                .putExtra("phoshdroid_top_padding_px", TOP_GAP_PX)
+                .putExtra("phoshdroid_bottom_padding_px", BOTTOM_GAP_PX)
             startActivity(waylandIntent)
         } catch (e: Exception) {
             statusText.text = "Display failed: ${e.message}"
         }
+
+        // Start proot
+        android.util.Log.e("Phoshdroid", "Starting ProotService...")
+        ProotService.start(this)
         Toast.makeText(this, getString(R.string.welcome_toast), Toast.LENGTH_LONG).show()
     }
 
@@ -259,5 +290,11 @@ class LauncherActivity : AppCompatActivity() {
 
     companion object {
         const val ACTION_SETTINGS = "com.phoshdroid.app.SETTINGS"
+        // Pixel gaps reserved above and below phosh's X11 surface. Enough space that
+        // a bottom-edge swipe originating in the gap crosses into phosh and registers
+        // as an edge gesture for lockscreen unlock. Top gap keeps phosh clear of the
+        // status bar / camera cutout.
+        private const val TOP_GAP_PX = 160
+        private const val BOTTOM_GAP_PX = 200
     }
 }
