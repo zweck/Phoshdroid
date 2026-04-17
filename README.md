@@ -1,10 +1,6 @@
 # Phoshdroid
 
-<p align="center">
-  <video src="https://raw.githubusercontent.com/zweck/Phoshdroid/main/docs/phoshdroid.mp4" width="400" controls autoplay loop muted>
-    Your browser does not support the video tag.
-  </video>
-</p>
+![Phoshdroid](https://github.com/zweck/Phoshdroid/blob/main/docs/phoshdroid.mp4?raw=true)
 
 **Phone + Linux, same screen, no root, no tears.**
 
