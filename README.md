@@ -1,4 +1,14 @@
-# Phoshdroid
+<p align="center">
+  <img src="docs/phoshdroid-logo.svg" width="200" alt="Phoshdroid logo">
+</p>
+
+<h1 align="center">Phoshdroid</h1>
+
+<p align="center">
+  <a href="https://github.com/zweck/Phoshdroid/releases/latest"><img src="https://img.shields.io/github/v/release/zweck/Phoshdroid?include_prereleases&label=release" alt="Release"></a>
+  <img src="https://img.shields.io/badge/android-12%2B-3DDC84" alt="Android 12+">
+  <img src="https://img.shields.io/badge/license-GPL--family-blue" alt="License">
+</p>
 
 ![Phoshdroid](https://github.com/zweck/Phoshdroid/blob/main/docs/phoshdroid.gif?raw=true)
 

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 220" width="300" height="220">
+  <!--
+    Phoshdroid logo — three isometric coasters stacked with a small air gap.
+    Bottom = Android green, middle = Termux black, top = postmarketOS green.
+  -->
+
+  <defs>
+    <linearGradient id="gTopPmOS" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"  stop-color="#006B25"/>
+      <stop offset="100%" stop-color="#00AE3C"/>
+    </linearGradient>
+    <linearGradient id="gTopTermux" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"  stop-color="#2A2A2A"/>
+      <stop offset="100%" stop-color="#474747"/>
+    </linearGradient>
+    <linearGradient id="gTopAndroid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"  stop-color="#2CB56A"/>
+      <stop offset="100%" stop-color="#51E59A"/>
+    </linearGradient>
+
+    <filter id="softShadow" x="-20%" y="-10%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+      <feOffset dx="0" dy="5" result="offsetBlur"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.4"/></feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g filter="url(#softShadow)" stroke-linejoin="round" stroke-width="14">
+    <!-- Bottom: Android -->
+    <polygon points="150,152 219,112 219,124 150,164" fill="#1F8C4C" stroke="#1F8C4C"/>
+    <polygon points="150,152 81,112  81,124  150,164" fill="#2EB468" stroke="#2EB468"/>
+    <polygon points="150,72  219,112 150,152 81,112"  fill="url(#gTopAndroid)" stroke="#51E59A"/>
+
+    <!-- Middle: Termux -->
+    <polygon points="150,136 219,96  219,108 150,148" fill="#0F0F0F" stroke="#0F0F0F"/>
+    <polygon points="150,136 81,96   81,108  150,148" fill="#202020" stroke="#202020"/>
+    <polygon points="150,56  219,96  150,136 81,96"   fill="url(#gTopTermux)" stroke="#474747"/>
+
+    <!-- Top: postmarketOS -->
+    <polygon points="150,120 219,80  219,92  150,132" fill="#003B12" stroke="#003B12"/>
+    <polygon points="150,120 81,80   81,92   150,132" fill="#00661F" stroke="#00661F"/>
+    <polygon points="150,40  219,80  150,120 81,80"   fill="url(#gTopPmOS)" stroke="#00AE3C"/>
+  </g>
+</svg>
