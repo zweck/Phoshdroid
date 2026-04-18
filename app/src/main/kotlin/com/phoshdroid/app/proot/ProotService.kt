@@ -20,7 +20,6 @@ class ProotService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        isRunning = true
         val filesDir = applicationContext.filesDir
         val nativeLibDir = applicationInfo.nativeLibraryDir
         android.util.Log.e("ProotService", "nativeLibDir=$nativeLibDir")
@@ -55,7 +54,6 @@ class ProotService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        isRunning = false
         stopProot()
         super.onDestroy()
     }
@@ -141,16 +139,6 @@ class ProotService : Service() {
         const val ACTION_STOP = "com.phoshdroid.app.STOP"
         const val DISTRO_NAME = "postmarketos"
         const val DEFAULT_STARTUP_SCRIPT = "/etc/phoshdroid/start.sh"
-
-        /**
-         * True while the foreground service is alive in this process. Used by
-         * LauncherActivity to skip bootstrap on activity recreation (Android
-         * re-runs onCreate without destroying the process) so we don't spin up
-         * a second X11 server on display :0.
-         */
-        @Volatile
-        var isRunning: Boolean = false
-            private set
 
         fun start(context: Context) {
             val intent = Intent(context, ProotService::class.java)

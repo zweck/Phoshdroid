@@ -64,12 +64,15 @@ class LauncherActivity : AppCompatActivity() {
 
         if (checkForDisplayShift("onCreate")) return
 
-        // If ProotService is already alive in this process (activity
-        // recreation after Android tore us down without killing the
-        // process), skip bootstrap — otherwise we'd wipe the live X server's
-        // socket as "stale" and start a second X server on :0.
-        if (com.phoshdroid.app.proot.ProotService.isRunning) {
-            android.util.Log.i("Phoshdroid", "onCreate: service already running, skip bootstrap")
+        // If this process already bootstrapped in a previous activity
+        // lifecycle, skip. Android recreates LauncherActivity on config
+        // changes (without killing the process); bootstrapping again would
+        // wipe the live X server's socket as "stale" and start a second
+        // X server on :0. This flag is a companion-level var so it resets
+        // when the process is killed (fold-restart path) but survives
+        // activity recreation inside one process.
+        if (bootstrapCompleted) {
+            android.util.Log.i("Phoshdroid", "onCreate: already bootstrapped this process, skip")
             return
         }
 
@@ -79,6 +82,7 @@ class LauncherActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 bootstrap()
+                bootstrapCompleted = true
             } catch (e: Exception) {
                 showError("Startup failed: ${e.message}\n\n${e.stackTraceToString()}", copyable = true)
             }
@@ -443,5 +447,11 @@ class LauncherActivity : AppCompatActivity() {
         private const val TOP_GAP_PX = 160
         private const val BOTTOM_GAP_PX = 200
         private const val DISPLAY_STATE_PREFS = "phoshdroid_display_state"
+
+        // Per-process flag: true once bootstrap() has run to completion.
+        // Resets when the process is killed (fold/unfold restarts the whole
+        // process via AlarmManager).
+        @Volatile
+        private var bootstrapCompleted = false
     }
 }
