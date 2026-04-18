@@ -21,8 +21,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Lint
-        run: ./gradlew lintDebug
+      - name: Lint (app only — submodules carry upstream warnings we don't own)
+        run: ./gradlew :app:lintDebug
 
       - name: Unit tests
         run: ./gradlew :app:test

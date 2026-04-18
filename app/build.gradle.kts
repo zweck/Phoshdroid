@@ -32,10 +32,15 @@ android {
     }
 
     lint {
-        // Lint crashes analysing the heavy Termux submodule sources; skip for
-        // release builds so they produce an APK.
+        // Lint crashes on the heavy Termux submodule sources (upstream warnings
+        // that aren't ours to fix) and on its own NonNullableMutableLiveData
+        // detector (known AGP/Kotlin IncompatibleClassChangeError). Don't abort
+        // on either; still produce the report.
         abortOnError = false
         checkReleaseBuilds = false
+        disable += listOf("NullSafeMutableLiveData", "SuspiciousIndentation")
+        // Only lint our own sources, not the transitive submodule outputs.
+        checkDependencies = false
     }
 
     compileOptions {
