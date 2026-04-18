@@ -28,7 +28,8 @@
 
         <activity
             android:name=".LauncherActivity"
-            android:exported="true">
+            android:exported="true"
+            android:configChanges="screenSize|screenLayout|smallestScreenSize|orientation|density|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

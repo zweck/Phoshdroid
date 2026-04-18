@@ -38,6 +38,14 @@ class LauncherActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { /* proceed regardless */ }
 
+    // The running proot session's XLORIE dimensions are persisted in
+    // SharedPreferences. Every onCreate / onResume / config change / display
+    // event compares the CURRENT display to the LAST SAVED dimensions. If they
+    // differ we kill the process and relaunch so the new proot run picks up
+    // the current metrics. Persisted state survives activity recreation
+    // (which Android does on fold/unfold) whereas Activity fields don't.
+    private var restartInFlight = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -54,11 +62,8 @@ class LauncherActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
         errorText = findViewById(R.id.errorText)
 
-        // Capture the launch-time display size. On foldables, unfolding/folding
-        // changes the window metrics but our proot session is already bound to
-        // the old size via XLORIE_{WIDTH,HEIGHT} + phoc.ini's `mode=WxH`. Phoc's
-        // wlroots X11 backend doesn't resize its window after creation, so the
-        // only way to follow the fold is to restart the whole session.
+        if (checkForDisplayShift("onCreate")) return
+
         registerDisplayChangeRestart()
 
         requestNotificationPermission()
@@ -71,24 +76,75 @@ class LauncherActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        checkForDisplayShift("onResume")
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        checkForDisplayShift("onConfigurationChanged")
+    }
+
+    private fun currentDisplayId(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display?.displayId ?: 0
+        } else {
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay?.displayId ?: 0
+        }
+
+    /**
+     * Compares the activity's current display to whatever the running proot
+     * session was started against. If they differ, persists the new dims and
+     * tears down the process. Returns true if a restart was initiated.
+     */
+    private fun checkForDisplayShift(source: String): Boolean {
+        if (restartInFlight) return true
+        val m = resources.displayMetrics
+        val currentW = m.widthPixels
+        val currentH = m.heightPixels
+        val currentId = currentDisplayId()
+        val prefs = getSharedPreferences(DISPLAY_STATE_PREFS, MODE_PRIVATE)
+        val lastW = prefs.getInt("last_w", 0)
+        val lastH = prefs.getInt("last_h", 0)
+        val lastId = prefs.getInt("last_id", -1)
+
+        if (lastW != 0 && (lastW != currentW || lastH != currentH || lastId != currentId)) {
+            android.util.Log.w(
+                "Phoshdroid",
+                "[$source] display shift ${lastW}x${lastH}@${lastId} -> ${currentW}x${currentH}@${currentId}, restarting"
+            )
+            prefs.edit()
+                .putInt("last_w", currentW)
+                .putInt("last_h", currentH)
+                .putInt("last_id", currentId)
+                .commit() // sync so the restarted process sees the new values
+            restartInFlight = true
+            restartApp()
+            return true
+        }
+        // First run or same dimensions — record and move on.
+        prefs.edit()
+            .putInt("last_w", currentW)
+            .putInt("last_h", currentH)
+            .putInt("last_id", currentId)
+            .apply()
+        return false
+    }
+
     private fun registerDisplayChangeRestart() {
-        val metrics = resources.displayMetrics
-        val initialW = metrics.widthPixels
-        val initialH = metrics.heightPixels
         val dm = getSystemService(android.hardware.display.DisplayManager::class.java) ?: return
         val listener = object : android.hardware.display.DisplayManager.DisplayListener {
             override fun onDisplayChanged(displayId: Int) {
-                val m = resources.displayMetrics
-                if (m.widthPixels != initialW || m.heightPixels != initialH) {
-                    android.util.Log.w(
-                        "Phoshdroid",
-                        "Display changed ${initialW}x${initialH} -> ${m.widthPixels}x${m.heightPixels}, restarting"
-                    )
-                    restartApp()
-                }
+                checkForDisplayShift("DisplayListener")
             }
-            override fun onDisplayAdded(displayId: Int) {}
-            override fun onDisplayRemoved(displayId: Int) {}
+            override fun onDisplayAdded(displayId: Int) {
+                checkForDisplayShift("DisplayListener.add")
+            }
+            override fun onDisplayRemoved(displayId: Int) {
+                checkForDisplayShift("DisplayListener.remove")
+            }
         }
         dm.registerDisplayListener(listener, null)
     }
@@ -377,5 +433,6 @@ class LauncherActivity : AppCompatActivity() {
         // status bar / camera cutout.
         private const val TOP_GAP_PX = 160
         private const val BOTTOM_GAP_PX = 200
+        private const val DISPLAY_STATE_PREFS = "phoshdroid_display_state"
     }
 }
