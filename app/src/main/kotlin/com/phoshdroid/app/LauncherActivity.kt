@@ -64,6 +64,15 @@ class LauncherActivity : AppCompatActivity() {
 
         if (checkForDisplayShift("onCreate")) return
 
+        // If ProotService is already alive in this process (activity
+        // recreation after Android tore us down without killing the
+        // process), skip bootstrap — otherwise we'd wipe the live X server's
+        // socket as "stale" and start a second X server on :0.
+        if (com.phoshdroid.app.proot.ProotService.isRunning) {
+            android.util.Log.i("Phoshdroid", "onCreate: service already running, skip bootstrap")
+            return
+        }
+
         registerDisplayChangeRestart()
 
         requestNotificationPermission()

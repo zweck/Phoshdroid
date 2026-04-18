@@ -11,8 +11,8 @@ android {
         applicationId = "com.phoshdroid.app"
         minSdk = 31
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 3
+        versionName = "0.0.3-alpha"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
