@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/zweck/Phoshdroid/releases/latest"><img src="https://img.shields.io/github/v/release/zweck/Phoshdroid?include_prereleases&label=release" alt="Release"></a>
+  <a href="#-install"><img src="https://img.shields.io/badge/Obtainium-auto--update-2196F3?logo=android&logoColor=white" alt="Obtainium"></a>
   <img src="https://img.shields.io/badge/android-12%2B-3DDC84" alt="Android 12+">
   <img src="https://img.shields.io/badge/license-GPL--family-blue" alt="License">
 </p>
@@ -51,7 +52,16 @@ graph TD
 
 ## 🏁 Install
 
-**Pre-built APK** — grab the latest from [Releases](https://github.com/zweck/Phoshdroid/releases/latest):
+**Obtainium (recommended for phones)** — auto-updates on every new release:
+
+1. Install [Obtainium](https://github.com/ImranR98/Obtainium/releases) (on F-Droid or direct APK).
+2. Tap *Add App* and paste:
+   ```
+   https://github.com/zweck/Phoshdroid
+   ```
+3. Install. Obtainium notifies you whenever a new tagged release ships.
+
+**Manual APK** — grab the latest from [Releases](https://github.com/zweck/Phoshdroid/releases/latest):
 
 ```bash
 adb install -r phoshdroid-<version>.apk
