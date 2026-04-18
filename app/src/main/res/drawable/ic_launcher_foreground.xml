@@ -1,10 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Phoshdroid adaptive-icon foreground — three isometric coasters stacked.
+  Matches docs/phoshdroid-logo.svg at icon scale. Fits inside the 72dp safe
+  zone (18..90 within the 108 viewport) so launchers can mask freely.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Bottom: Android -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,30 L78,75 L30,75 Z" />
+        android:fillColor="#1F8C4C"
+        android:strokeColor="#1F8C4C"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,80 L90,59 L90,65.3 L54,86.2 Z"/>
+    <path
+        android:fillColor="#2EB468"
+        android:strokeColor="#2EB468"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,80 L18,59 L18,65.3 L54,86.2 Z"/>
+    <path
+        android:fillColor="#3DDC84"
+        android:strokeColor="#3DDC84"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,38.2 L90,59 L54,80 L18,59 Z"/>
+
+    <!-- Middle: Termux -->
+    <path
+        android:fillColor="#0F0F0F"
+        android:strokeColor="#0F0F0F"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,71.6 L90,50.7 L90,57.0 L54,77.9 Z"/>
+    <path
+        android:fillColor="#202020"
+        android:strokeColor="#202020"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,71.6 L18,50.7 L18,57.0 L54,77.9 Z"/>
+    <path
+        android:fillColor="#3A3A3A"
+        android:strokeColor="#3A3A3A"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,29.9 L90,50.7 L54,71.6 L18,50.7 Z"/>
+
+    <!-- Top: postmarketOS -->
+    <path
+        android:fillColor="#003B12"
+        android:strokeColor="#003B12"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,63.3 L90,42.4 L90,48.7 L54,69.6 Z"/>
+    <path
+        android:fillColor="#00661F"
+        android:strokeColor="#00661F"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,63.3 L18,42.4 L18,48.7 L54,69.6 Z"/>
+    <path
+        android:fillColor="#00AE3C"
+        android:strokeColor="#00AE3C"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,21.5 L90,42.4 L54,63.3 L18,42.4 Z"/>
 </vector>

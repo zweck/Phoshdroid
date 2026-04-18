@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Off-white background so the three green/black tiles read cleanly against it. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#1976D2" />
+    <solid android:color="#F5F5F5" />
 </shape>

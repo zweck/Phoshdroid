@@ -120,6 +120,22 @@ class LauncherActivity : AppCompatActivity() {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
+        requestAllFilesAccess()
+    }
+
+    private fun requestAllFilesAccess() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        if (android.os.Environment.isExternalStorageManager()) return
+        try {
+            val intent = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                .setData(android.net.Uri.parse("package:${packageName}"))
+            startActivity(intent)
+        } catch (_: Exception) {
+            // Fallback: generic Settings entry for MANAGE_EXTERNAL_STORAGE
+            try {
+                startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            } catch (_: Exception) {}
+        }
     }
 
     private suspend fun bootstrap() {

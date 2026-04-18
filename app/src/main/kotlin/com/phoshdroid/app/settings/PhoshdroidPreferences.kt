@@ -28,7 +28,7 @@ class PhoshdroidPreferences(context: Context) {
         set(value) = prefs.edit().putString("de", value.value).apply()
 
     var bindSdcard: Boolean
-        get() = prefs.getBoolean("bind_sdcard", false)
+        get() = prefs.getBoolean("bind_sdcard", true)
         set(value) = prefs.edit().putBoolean("bind_sdcard", value).apply()
 
     var customStartupScript: String?

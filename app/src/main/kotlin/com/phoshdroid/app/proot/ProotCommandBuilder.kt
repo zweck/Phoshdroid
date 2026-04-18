@@ -45,8 +45,13 @@ class ProotCommandBuilder(
         )
 
         if (bindSdcard) {
+            // /sdcard is Android's user-visible storage. Mount it at /home/user
+            // and at /sdcard so GNOME apps (Nautilus, Papers, etc.) and the
+            // shell both see the same files as the phone's file manager.
             cmd.add("-b")
-            cmd.add("/sdcard:/home/user/sdcard")
+            cmd.add("/sdcard:/home/user/storage")
+            cmd.add("-b")
+            cmd.add("/sdcard:/sdcard")
         }
 
         cmd.add("/bin/bash")
