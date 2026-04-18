@@ -241,9 +241,16 @@ class LauncherActivity : AppCompatActivity() {
             }
         }
 
-        // Phase 2: Extract pmOS rootfs
-        val rootfsExtractDir = File(filesDir, "rootfs")
-        if (!File(rootfsExtractDir, ".extraction_complete").exists()) {
+        // Phase 2: Extract pmOS rootfs directly into proot's expected location.
+        // The previous two-phase "extract to files/rootfs/, then rename-move
+        // into files/usr/var/lib/.../postmarketos/" layout was fragile — if
+        // the process was killed between extraction and rename (display-shift
+        // restart, OOM kill, etc.), subsequent launches found rootfsDir
+        // already present, skipped the move, and left a half-populated rootfs
+        // that hung phosh at "Preparing your desktop".
+        val prefixDir = "${filesDir}/usr"
+        val rootfsDir = File(prefixDir, "var/lib/proot-distro/installed-rootfs/${ProotService.DISTRO_NAME}")
+        if (!File(rootfsDir, ".extraction_complete").exists()) {
             showProgress(getString(R.string.extracting_rootfs))
 
             val availableBytes = StatFs(filesDir.absolutePath).availableBytes
@@ -258,9 +265,15 @@ class LauncherActivity : AppCompatActivity() {
             }
 
             progressBar.isIndeterminate = true
+            rootfsDir.mkdirs()
+            // Clean up any leftover staging dir from older APK versions that
+            // used the two-phase layout, so we reclaim that disk space.
+            withContext(Dispatchers.IO) {
+                File(filesDir, "rootfs").deleteRecursively()
+            }
             val extracted = withContext(Dispatchers.IO) {
                 assets.open("rootfs.bin").use { input ->
-                    extractor.extract(input, -1, rootfsExtractDir)
+                    extractor.extract(input, -1, rootfsDir)
                 }
             }
             if (!extracted) {
@@ -272,20 +285,6 @@ class LauncherActivity : AppCompatActivity() {
         // Phase 3: Set up rootfs for proot (bypass proot-distro, call proot directly)
         statusText.text = getString(R.string.preparing_desktop)
         progressBar.visibility = View.GONE
-
-        val prefixDir = "${filesDir}/usr"
-        val rootfsDir = File(prefixDir, "var/lib/proot-distro/installed-rootfs/${ProotService.DISTRO_NAME}")
-        if (!rootfsDir.exists()) {
-            withContext(Dispatchers.IO) {
-                rootfsDir.mkdirs()
-                // Move extracted rootfs into proot's expected location
-                File(filesDir, "rootfs").listFiles()?.forEach { file ->
-                    if (file.name != ".extraction_complete") {
-                        file.renameTo(File(rootfsDir, file.name))
-                    }
-                }
-            }
-        }
 
         // Ensure shared tmp dir exists for Wayland socket
         File(prefixDir, "tmp").mkdirs()
