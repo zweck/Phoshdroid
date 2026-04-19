@@ -15,20 +15,36 @@ chown -R user:user /home/user 2>/dev/null || true
 # icon. Security is already a no-op under proot; the shim just makes the
 # expected command flow through.
 if [ -f /etc/phoshdroid/bwrap-shim.sh ] && [ -e /usr/bin/bwrap ]; then
-    chmod +x /etc/phoshdroid/bwrap-shim.sh
-    cp /usr/bin/bwrap /usr/bin/bwrap.real 2>/dev/null || true
-    cp /etc/phoshdroid/bwrap-shim.sh /usr/bin/bwrap
-    chmod +x /usr/bin/bwrap
+    # Only swap when /usr/bin/bwrap is still the original ELF, not our
+    # shebang-prefixed shim. Avoids copying a multi-MB binary on every launch.
+    if ! head -c2 /usr/bin/bwrap 2>/dev/null | grep -q '#!'; then
+        chmod +x /etc/phoshdroid/bwrap-shim.sh
+        cp /usr/bin/bwrap /usr/bin/bwrap.real 2>/dev/null || true
+        cp /etc/phoshdroid/bwrap-shim.sh /usr/bin/bwrap
+        chmod +x /usr/bin/bwrap
+    fi
 fi
-gdk-pixbuf-query-loaders > /usr/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache 2>/dev/null || true
+# Regenerate the gdk-pixbuf loader cache only if a loader .so is newer than
+# the cache, or the cache is missing. Under proot this tool takes several
+# seconds; skipping it on unchanged installs shaves visible time off cold
+# starts.
+pixbuf_dir=/usr/lib/gdk-pixbuf-2.0/2.10.0
+pixbuf_cache="$pixbuf_dir/loaders.cache"
+if [ ! -f "$pixbuf_cache" ] || \
+    [ -n "$(find "$pixbuf_dir/loaders" -name '*.so' -newer "$pixbuf_cache" 2>/dev/null | head -n1)" ]; then
+    gdk-pixbuf-query-loaders > "$pixbuf_cache" 2>/dev/null || true
+fi
 
 # Recompile gschemas so our 99-phoshdroid.gschema.override wins over the
-# pmOS defaults. The shipped rootfs's gschemas.compiled still points phosh's
-# wallpaper URIs at blobs-d.svg, and that SVG load goes through glycin's
-# bwrap-sandbox codepath which has SIGSEGV'd phosh on dark/light switch.
-# Our override forces both light and dark URIs at a pre-rasterised PNG.
-# Cheap (milliseconds), idempotent.
-glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true
+# pmOS defaults. Only runs when an .xml or .override is newer than
+# gschemas.compiled — which is the case the first time our overlay lands
+# on a fresh rootfs, and not on subsequent launches.
+schemas_dir=/usr/share/glib-2.0/schemas
+schemas_compiled="$schemas_dir/gschemas.compiled"
+if [ ! -f "$schemas_compiled" ] || \
+    [ -n "$(find "$schemas_dir" \( -name '*.xml' -o -name '*.override' \) -newer "$schemas_compiled" 2>/dev/null | head -n1)" ]; then
+    glib-compile-schemas "$schemas_dir" 2>/dev/null || true
+fi
 
 # Clear PAM blockers.
 passwd -d user >/dev/null 2>&1 || true
