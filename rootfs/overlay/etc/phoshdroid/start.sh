@@ -22,6 +22,14 @@ if [ -f /etc/phoshdroid/bwrap-shim.sh ] && [ -e /usr/bin/bwrap ]; then
 fi
 gdk-pixbuf-query-loaders > /usr/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache 2>/dev/null || true
 
+# Recompile gschemas so our 99-phoshdroid.gschema.override wins over the
+# pmOS defaults. The shipped rootfs's gschemas.compiled still points phosh's
+# wallpaper URIs at blobs-d.svg, and that SVG load goes through glycin's
+# bwrap-sandbox codepath which has SIGSEGV'd phosh on dark/light switch.
+# Our override forces both light and dark URIs at a pre-rasterised PNG.
+# Cheap (milliseconds), idempotent.
+glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true
+
 # Clear PAM blockers.
 passwd -d user >/dev/null 2>&1 || true
 passwd -d root >/dev/null 2>&1 || true

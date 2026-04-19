@@ -1,0 +1,29 @@
+# Phoshdroid-specific gschema overrides. The "99-" prefix ensures these win
+# over the pmOS ones (00_mobi.Phosh, 10_pmOS-wallpaper, ...).
+#
+# Reason for existing: phosh reloads its wallpaper via glycin whenever
+# picture-uri or the system color-scheme changes. Under proot, glycin's
+# bwrap-sandboxed subprocess path is fragile — it works often but has
+# SIGSEGV'd phosh at least once during a background reload (dark/light
+# auto-switch, probably). We paper over this by:
+#
+#   - Pointing both the light and dark wallpaper URIs at the same static PNG
+#     (pre-rasterised at build time in rootfs/overlay/) so the color-scheme
+#     toggle doesn't trigger a fresh image load.
+#   - Doing the same for the screensaver.
+#
+# If someone later fixes glycin properly under proot, this file can be
+# deleted without losing anything else.
+
+[org.gnome.desktop.background:Phosh]
+picture-uri='file:///usr/share/phoshdroid/background.png'
+picture-uri-dark='file:///usr/share/phoshdroid/background.png'
+
+[org.gnome.desktop.screensaver:Phosh]
+picture-uri='file:///usr/share/phoshdroid/background.png'
+
+# Also set the non-Phosh profile so commands run outside the phosh profile
+# (e.g. one-shots) don't accidentally reintroduce an SVG URI.
+[org.gnome.desktop.background]
+picture-uri='file:///usr/share/phoshdroid/background.png'
+picture-uri-dark='file:///usr/share/phoshdroid/background.png'
