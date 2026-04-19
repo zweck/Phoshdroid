@@ -393,21 +393,61 @@ class LauncherActivity : AppCompatActivity() {
             android.util.Log.e("Phoshdroid", "X11 setup failed", e)
         }
 
-        // Launch the X11 display activity
+        // Start proot first so phoc + phosh start coming up while the user
+        // still sees this loading screen (logo + "Starting desktop…").
+        android.util.Log.e("Phoshdroid", "Starting ProotService...")
+        ProotService.start(this)
+        statusText.text = getString(R.string.starting_desktop)
+
+        // Wait for phosh to actually be rendering before we hand control to
+        // MainActivity. Otherwise the Termux:X11 view paints its empty root
+        // with the default cursor for 10–30s on cold start — users think
+        // something has hung. We watch the proot-side start log for phosh's
+        // own "Phosh ready after" line.
+        val phoshReady = waitForPhoshReady(File(prefixDir, "tmp/phoshdroid-start.log"))
+        if (!phoshReady) {
+            android.util.Log.w("Phoshdroid", "Phosh-ready timeout, launching MainActivity anyway")
+        }
+
         android.util.Log.e("Phoshdroid", "Launching X11 activity...")
         try {
             val waylandIntent = Intent(this, Class.forName("com.termux.x11.MainActivity"))
                 .putExtra("phoshdroid_top_padding_px", TOP_GAP_PX)
                 .putExtra("phoshdroid_bottom_padding_px", BOTTOM_GAP_PX)
+                .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
             startActivity(waylandIntent)
+            // LauncherActivity is no longer useful — let the user back-swipe
+            // straight out of MainActivity instead of returning here.
+            finish()
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
         } catch (e: Exception) {
             statusText.text = "Display failed: ${e.message}"
         }
+    }
 
-        // Start proot
-        android.util.Log.e("Phoshdroid", "Starting ProotService...")
-        ProotService.start(this)
-        Toast.makeText(this, getString(R.string.welcome_toast), Toast.LENGTH_LONG).show()
+    /**
+     * Poll the proot startup log for phosh's own "Phosh ready after N.Ns"
+     * line. Returns true when it appears, false on timeout.
+     */
+    private suspend fun waitForPhoshReady(
+        logFile: File,
+        timeoutMs: Long = 60_000,
+    ): Boolean = withContext(Dispatchers.IO) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (logFile.exists()) {
+                try {
+                    if (logFile.bufferedReader().useLines { lines ->
+                            lines.any { it.contains("Phosh ready after") }
+                        }) {
+                        return@withContext true
+                    }
+                } catch (_: Exception) { /* log being actively written — retry */ }
+            }
+            Thread.sleep(500)
+        }
+        false
     }
 
     private fun showProgress(message: String) {
