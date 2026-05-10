@@ -56,9 +56,16 @@ passwd -d user >/dev/null 2>&1 || true
 passwd -d root >/dev/null 2>&1 || true
 
 # Phoc config — mode driven by XLORIE_WIDTH/HEIGHT from the Android launcher.
+# If the launcher couldn't determine the display size early enough (e.g. the
+# activity came up while Android was still in Doze), fall back to a sane
+# 9:16-ish default rather than letting phoc inherit wlroots' 1024x768. A
+# wrong-but-plausible mode is dramatically less broken than the default.
 OUTPUT_MODE=""
-if [ -n "$XLORIE_WIDTH" ] && [ -n "$XLORIE_HEIGHT" ]; then
+if [ -n "$XLORIE_WIDTH" ] && [ -n "$XLORIE_HEIGHT" ] && [ "$XLORIE_WIDTH" -gt 0 ] && [ "$XLORIE_HEIGHT" -gt 0 ]; then
     OUTPUT_MODE="mode=${XLORIE_WIDTH}x${XLORIE_HEIGHT}"
+else
+    echo "WARN: XLORIE_WIDTH/HEIGHT empty (got '$XLORIE_WIDTH'x'$XLORIE_HEIGHT'); falling back to 1080x2364" >&2
+    OUTPUT_MODE="mode=1080x2004"
 fi
 PHOC_INI="/tmp/phoc.ini"
 cat > "$PHOC_INI" <<PHOC_EOF
