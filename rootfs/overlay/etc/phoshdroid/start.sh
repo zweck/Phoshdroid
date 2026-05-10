@@ -71,6 +71,26 @@ fi
 passwd -d user >/dev/null 2>&1 || true
 passwd -d root >/dev/null 2>&1 || true
 
+# DNS — the rootfs ships with whatever resolv.conf was current when the
+# tarball was built (typically a LAN router IP from the build machine),
+# and there's no NetworkManager inside the proot to refresh it because
+# we have no system bus. Hardcode public resolvers so Firefox / apt /
+# anything else inside phosh can actually resolve hostnames regardless
+# of which Android network is active (Wi-Fi, cellular, VPN). Cloudflare
+# + Google chosen because both work over IPv4 and IPv6 and both honour
+# Android's per-uid VPN routing (so traffic still goes through whatever
+# interface the host has selected).
+cat > /etc/resolv.conf <<RESOLV_EOF
+# Phoshdroid: managed by /etc/phoshdroid/start.sh; edits will be
+# overwritten on next launch. To use a different resolver, edit the
+# heredoc in start.sh.
+nameserver 1.1.1.1
+nameserver 1.0.0.1
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+RESOLV_EOF
+chmod 644 /etc/resolv.conf
+
 # Phoc config — mode driven by XLORIE_WIDTH/HEIGHT from the Android launcher.
 # If the launcher couldn't determine the display size early enough (e.g. the
 # activity came up while Android was still in Doze), fall back to a sane
