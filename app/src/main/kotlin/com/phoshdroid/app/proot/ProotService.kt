@@ -14,7 +14,6 @@ import com.phoshdroid.app.settings.PhoshdroidPreferences
 import java.io.File
 
 class ProotService : Service() {
-
     private var prootProcess: Process? = null
     private var manager: ProotDistroManager? = null
 
@@ -23,20 +22,26 @@ class ProotService : Service() {
         val filesDir = applicationContext.filesDir
         val nativeLibDir = applicationInfo.nativeLibraryDir
         android.util.Log.e("ProotService", "nativeLibDir=$nativeLibDir")
-        val prefixDir = "${filesDir}/usr"
-        val commandBuilder = ProotCommandBuilder(
-            nativeLibDir = nativeLibDir,
-            prefixDir = prefixDir,
-            distroName = DISTRO_NAME
-        )
-        manager = ProotDistroManager(
-            commandBuilder = commandBuilder,
-            installedRootfsDir = File(prefixDir, "var/lib/proot-distro/installed-rootfs"),
-            rootfsTarball = File(filesDir, "rootfs/rootfs.tar")
-        )
+        val prefixDir = "$filesDir/usr"
+        val commandBuilder =
+            ProotCommandBuilder(
+                nativeLibDir = nativeLibDir,
+                prefixDir = prefixDir,
+                distroName = DISTRO_NAME,
+            )
+        manager =
+            ProotDistroManager(
+                commandBuilder = commandBuilder,
+                installedRootfsDir = File(prefixDir, "var/lib/proot-distro/installed-rootfs"),
+                rootfsTarball = File(filesDir, "rootfs/rootfs.tar"),
+            )
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         when (intent?.action) {
             ACTION_STOP -> {
                 stopProot()
@@ -65,38 +70,71 @@ class ProotService : Service() {
         val startupScript = prefs.customStartupScript ?: DEFAULT_STARTUP_SCRIPT
 
         android.util.Log.i("ProotService", "Starting proot with script: $startupScript")
-        prootProcess = manager?.login(
-            startupScript = startupScript,
-            bindSdcard = prefs.bindSdcard
-        )
+        prootProcess =
+            manager?.login(
+                startupScript = startupScript,
+                bindSdcard = prefs.bindSdcard,
+            )
 
-        Thread {
-            // Capture proot stdout/stderr
-            val output = prootProcess?.inputStream?.bufferedReader()?.readText() ?: ""
-            val exitCode = prootProcess?.waitFor() ?: -1
+        Thread({
+            // Capture proot stdout/stderr. Wrapped in try/catch because
+            // stopProot() calls Process.destroy() while we're blocked on
+            // readText(), which closes the pipe from another thread and
+            // raises InterruptedIOException. Without this guard the
+            // exception propagates up the monitor thread, AndroidRuntime
+            // kills the whole process, ActivityManager restarts the
+            // service alone (no LauncherActivity), and the user is left
+            // staring at "Starting desktop" forever.
+            val output =
+                try {
+                    prootProcess?.inputStream?.bufferedReader()?.readText() ?: ""
+                } catch (e: java.io.IOException) {
+                    android.util.Log.w("ProotService", "proot stdout read interrupted", e)
+                    "<read interrupted: ${e.message}>"
+                }
+            val exitCode =
+                try {
+                    prootProcess?.waitFor() ?: -1
+                } catch (_: InterruptedException) {
+                    -1
+                }
             android.util.Log.i("ProotService", "proot exited ($exitCode): $output")
 
             // Write to a file for debugging
             try {
                 java.io.File(applicationContext.filesDir, "usr/tmp/proot-exit.log").writeText(
-                    "exit=$exitCode\n$output"
+                    "exit=$exitCode\n$output",
                 )
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
 
-            if (exitCode != 0) {
-                prootProcess = manager?.login(
-                    startupScript = startupScript,
-                    bindSdcard = prefs.bindSdcard
-                )
-                val retryOutput = prootProcess?.inputStream?.bufferedReader()?.readText() ?: ""
-                val retryCode = prootProcess?.waitFor() ?: -1
+            // Don't auto-retry if we exited because someone called
+            // stopProot() — they want us gone, not respawned.
+            if (exitCode != 0 && prootProcess != null) {
+                prootProcess =
+                    manager?.login(
+                        startupScript = startupScript,
+                        bindSdcard = prefs.bindSdcard,
+                    )
+                val retryOutput =
+                    try {
+                        prootProcess?.inputStream?.bufferedReader()?.readText() ?: ""
+                    } catch (e: java.io.IOException) {
+                        "<retry read interrupted: ${e.message}>"
+                    }
+                val retryCode =
+                    try {
+                        prootProcess?.waitFor() ?: -1
+                    } catch (_: InterruptedException) {
+                        -1
+                    }
                 android.util.Log.i("ProotService", "proot retry exited ($retryCode): $retryOutput")
                 if (retryCode != 0) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
             }
-        }.start()
+        }, "ProotMonitor").start()
     }
 
     private fun stopProot() {
@@ -108,26 +146,50 @@ class ProotService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val settingsIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, LauncherActivity::class.java).apply {
-                action = LauncherActivity.ACTION_SETTINGS
-            },
-            PendingIntent.FLAG_IMMUTABLE
-        )
+        // Tapping the notification body brings the user back to
+        // LauncherActivity, which forwards straight to MainActivity once
+        // bootstrap is done. This is the supported way back into the X11
+        // surface after the user has swiped the launcher away — a plain
+        // startActivity from the service is BAL-blocked on Android 14+,
+        // but a notification-tap-initiated launch is exempt.
+        val contentIntent =
+            PendingIntent.getActivity(
+                this,
+                0,
+                Intent(this, LauncherActivity::class.java).apply {
+                    action = Intent.ACTION_MAIN
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                },
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
 
-        val stopIntent = PendingIntent.getService(
-            this, 0,
-            Intent(this, ProotService::class.java).apply {
-                action = ACTION_STOP
-            },
-            PendingIntent.FLAG_IMMUTABLE
-        )
+        val settingsIntent =
+            PendingIntent.getActivity(
+                this,
+                1,
+                Intent(this, LauncherActivity::class.java).apply {
+                    action = LauncherActivity.ACTION_SETTINGS
+                },
+                PendingIntent.FLAG_IMMUTABLE,
+            )
 
-        return NotificationCompat.Builder(this, PhoshdroidApp.CHANNEL_ID)
+        val stopIntent =
+            PendingIntent.getService(
+                this,
+                2,
+                Intent(this, ProotService::class.java).apply {
+                    action = ACTION_STOP
+                },
+                PendingIntent.FLAG_IMMUTABLE,
+            )
+
+        return NotificationCompat
+            .Builder(this, PhoshdroidApp.CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
             .setContentText(getString(R.string.notification_text))
             .setSmallIcon(android.R.drawable.ic_menu_manage)
+            .setContentIntent(contentIntent)
             .setOngoing(true)
             .addAction(0, getString(R.string.action_settings), settingsIntent)
             .addAction(0, getString(R.string.action_stop), stopIntent)
@@ -146,9 +208,10 @@ class ProotService : Service() {
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, ProotService::class.java).apply {
-                action = ACTION_STOP
-            }
+            val intent =
+                Intent(context, ProotService::class.java).apply {
+                    action = ACTION_STOP
+                }
             context.startService(intent)
         }
     }
