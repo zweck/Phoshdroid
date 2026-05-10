@@ -91,6 +91,64 @@ nameserver 8.8.4.4
 RESOLV_EOF
 chmod 644 /etc/resolv.conf
 
+# pmroot fake-root listener.
+#
+# start.sh runs as fake-UID-0 (proot's -0 flag), but we drop to UID 1000
+# via `su - user` before exec'ing phosh because GNOME apps refuse to run
+# as root. That leaves the user with no path to apk / passwd / mkfs etc:
+# Android's untrusted_app sandbox sets PR_SET_NO_NEW_PRIVS=1, which
+# blocks sudo/su from elevating, and proot can't fake UID 0 again once
+# we've explicitly setuid'd down.
+#
+# Solution: while we're still UID 0, fork a long-running bash that reads
+# command lines from a FIFO and runs each one as the listener's own
+# (root) UID. The user-side `pmroot` wrapper writes commands in and
+# collects results. Functionally equivalent to a passwordless sudo
+# scoped to commands the user explicitly runs through pmroot.
+#
+# Security model: any process at UID 1000 inside the rootfs can write to
+# the FIFO, which means anything the user can run can become 'root'.
+# That's already the security model of proot — there's no real privilege
+# boundary because it's all simulation — so pmroot doesn't weaken
+# anything that wasn't already permeable.
+mkdir -p /tmp/pmroot
+chmod 1777 /tmp/pmroot
+rm -f /tmp/pmroot/in
+mkfifo /tmp/pmroot/in
+chmod 622 /tmp/pmroot/in
+
+# The listener loop runs forever, reading one command-line per iteration.
+# Backgrounded with disown so it survives the shell that started it; nohup
+# detaches it from the terminal once we drop privs and exec into su.
+# Stdout/stderr go to a debug log so a misbehaving listener can be
+# inspected without a live shell.
+nohup bash -c '
+    exec >>/tmp/pmroot/listener.log 2>&1
+    echo "=== pmroot listener started at $(date) ==="
+    while true; do
+        # Re-open the FIFO every iteration. The writer side closes after
+        # each command, which would make read() return EOF; the loop
+        # would spin instead of blocking.
+        if ! IFS= read -r line < /tmp/pmroot/in; then
+            sleep 0.1
+            continue
+        fi
+        # Split on first colon: <id>:<quoted-command>
+        id="${line%%:*}"
+        cmd="${line#*:}"
+        out="/tmp/pmroot/out.$id"
+        done_marker="/tmp/pmroot/done.$id"
+        echo "[$(date +%T)] running $id: $cmd"
+        # eval so the printf '%q' quoting from the wrapper survives.
+        bash -c "$cmd" >"$out" 2>&1 || true
+        rc=$?
+        echo "$rc" >"$done_marker"
+        echo "[$(date +%T)] done $id rc=$rc"
+    done
+' >/dev/null 2>&1 &
+disown
+echo "pmroot listener pid: $!"
+
 # Phoc config — mode driven by XLORIE_WIDTH/HEIGHT from the Android launcher.
 # If the launcher couldn't determine the display size early enough (e.g. the
 # activity came up while Android was still in Doze), fall back to a sane

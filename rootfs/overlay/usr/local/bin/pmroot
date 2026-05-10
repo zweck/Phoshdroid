@@ -1,0 +1,82 @@
+#!/bin/bash
+# pmroot — run a command as fake-root inside the Phoshdroid proot session.
+#
+# The user-facing phosh session is deliberately UID 1000 (set by start.sh
+# via `su - user`) because phosh, Nautilus, and xdg-desktop-portal all bail
+# with "running as root unsupported" otherwise. That leaves apk / passwd /
+# mkfs / anything that geteuid()-checks unable to run from the user's
+# terminal.
+#
+# Android's untrusted_app sandbox sets PR_SET_NO_NEW_PRIVS=1 on every
+# process Phoshdroid creates, which makes sudo/su hard-refuse to bypass —
+# they detect the flag and exit with the message you saw. proot's -0 mode
+# can't help once a process has explicitly setuid'd downwards.
+#
+# Workaround: start.sh leaves a long-running fake-root bash listener
+# attached to /tmp/pmroot/in before it drops privileges. This wrapper
+# writes a command to that FIFO and waits for the result.
+#
+# Usage:
+#   pmroot apk add curl
+#   pmroot apk update && pmroot apk upgrade
+#
+# Security note: any UID-1000 process inside the proot can call this, so
+# it's functionally a UID-1000 path to fake-root. That's the security
+# model of proot-on-Android already; pmroot doesn't weaken anything.
+
+set -e
+
+if [ "$#" -eq 0 ]; then
+    cat >&2 <<USAGE
+Usage: pmroot <command> [args...]
+Examples:
+    pmroot apk add curl
+    pmroot apk update
+    pmroot passwd user
+USAGE
+    exit 64
+fi
+
+if [ ! -p /tmp/pmroot/in ]; then
+    echo "pmroot: fake-root listener FIFO missing at /tmp/pmroot/in." >&2
+    echo "        Phoshdroid may need to be relaunched to re-spawn it." >&2
+    exit 70
+fi
+
+# Unique id per invocation. Using $$ + $RANDOM avoids collisions when two
+# pmroot calls fire near-simultaneously and the FIFO serialises them out
+# of order.
+id="$$.$RANDOM"
+out="/tmp/pmroot/out.$id"
+done_marker="/tmp/pmroot/done.$id"
+rm -f "$out" "$done_marker"
+
+# Re-quote args so spaces / quotes / $vars survive the trip through the
+# FIFO and the listener's `bash -c`. printf '%q' produces a form bash
+# itself can re-eval.
+quoted=""
+for arg in "$@"; do
+    quoted+=" $(printf '%q' "$arg")"
+done
+
+# Send <id>:<quoted-command-line> on a single line. The listener splits on
+# the first ':' so the command itself can contain colons.
+echo "$id:$quoted" > /tmp/pmroot/in
+
+# Wait for completion. 10-minute cap is generous enough for `apk upgrade`
+# on a slow link without leaving a dangling poll if the listener died.
+deadline=$(( $(date +%s) + 600 ))
+while [ ! -f "$done_marker" ]; do
+    if [ "$(date +%s)" -gt "$deadline" ]; then
+        echo "pmroot: timeout waiting for fake-root listener (10 min)." >&2
+        echo "        Check /tmp/pmroot/listener.log for the listener state." >&2
+        rm -f "$out" "$done_marker"
+        exit 71
+    fi
+    sleep 0.1
+done
+
+[ -f "$out" ] && cat "$out"
+rc=$(cat "$done_marker")
+rm -f "$out" "$done_marker"
+exit "$rc"
