@@ -91,6 +91,30 @@ nameserver 8.8.4.4
 RESOLV_EOF
 chmod 644 /etc/resolv.conf
 
+# Populate /etc/apk/keys/ from /usr/share/apk/keys/.
+#
+# pmbootstrap-built rootfs ship the Alpine + postmarketOS public keys
+# under /usr/share/apk/keys/{aarch64,armv7,...}/*.rsa.pub but never
+# install them into /etc/apk/keys/, which is the only place apk itself
+# looks. Result: every 'apk' command emits 'UNTRUSTED signature' for
+# every repo and refuses to install any package ('curl (no such
+# package)' even though it's in the index). 'apk add --allow-untrusted'
+# works around it but isn't something we should ask the user to type.
+#
+# Detect the proot's architecture (always aarch64 today; keeping the
+# expansion future-proof) and copy in the matching arch dir plus the
+# postmarketOS build key. Idempotent because cp -n won't overwrite.
+KEYS_SRC=/usr/share/apk/keys
+KEYS_DST=/etc/apk/keys
+mkdir -p "$KEYS_DST"
+ARCH=$(uname -m)
+if [ -d "$KEYS_SRC/$ARCH" ]; then
+    cp -n "$KEYS_SRC/$ARCH"/*.rsa.pub "$KEYS_DST/" 2>/dev/null || true
+fi
+# build.postmarketos.org.rsa.pub lives at the top level, not under the
+# arch subdir, because it signs every arch the pmOS build farm produces.
+cp -n "$KEYS_SRC"/build.postmarketos.org.rsa.pub "$KEYS_DST/" 2>/dev/null || true
+
 # pmroot fake-root listener.
 #
 # start.sh runs as fake-UID-0 (proot's -0 flag), but we drop to UID 1000
@@ -139,8 +163,13 @@ nohup bash -c '
         out="/tmp/pmroot/out.$id"
         done_marker="/tmp/pmroot/done.$id"
         echo "[$(date +%T)] running $id: $cmd"
-        # eval so the printf '%q' quoting from the wrapper survives.
-        bash -c "$cmd" >"$out" 2>&1 || true
+        # eval so the printf %q quoting from the wrapper survives.
+        # No '|| true': we WANT $? to reflect the actual command, and the
+        # outer loop body is robust against non-zero so the listener
+        # doesn't die. The first version had '|| true' which made $? read
+        # back as 0 every time — every command appeared to succeed even
+        # when apk had genuinely failed.
+        bash -c "$cmd" >"$out" 2>&1
         rc=$?
         echo "$rc" >"$done_marker"
         echo "[$(date +%T)] done $id rc=$rc"
