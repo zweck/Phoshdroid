@@ -29,7 +29,12 @@
         <activity
             android:name=".LauncherActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:configChanges="screenSize|screenLayout|smallestScreenSize|orientation|density|uiMode">
+            <!-- singleTask so that re-tapping the launcher icon (or the FGS
+                 notification) while bootstrap is in flight reuses the live
+                 LauncherActivity — firing onNewIntent / onResume — instead
+                 of spawning a second instance that races the X server. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

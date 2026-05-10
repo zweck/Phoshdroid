@@ -29,21 +29,20 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 class LauncherActivity : AppCompatActivity() {
-
     private lateinit var statusText: TextView
     private lateinit var progressBar: LinearProgressIndicator
     private lateinit var errorText: TextView
 
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { /* proceed regardless */ }
+    private val notificationPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) { /* proceed regardless */ }
 
     // The running proot session's XLORIE dimensions are persisted in
-    // SharedPreferences. Every onCreate / onResume / config change / display
-    // event compares the CURRENT display to the LAST SAVED dimensions. If they
-    // differ we kill the process and relaunch so the new proot run picks up
-    // the current metrics. Persisted state survives activity recreation
-    // (which Android does on fold/unfold) whereas Activity fields don't.
+    // SharedPreferences. onCreate compares CURRENT display to LAST SAVED
+    // dimensions; if they differ (e.g. user folded the phone between launches)
+    // we kill the process and relaunch so the new proot run picks up the
+    // current metrics. Persisted state survives process death.
     private var restartInFlight = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,7 +50,8 @@ class LauncherActivity : AppCompatActivity() {
 
         if (intent?.action == ACTION_SETTINGS) {
             setContentView(R.layout.activity_launcher)
-            supportFragmentManager.beginTransaction()
+            supportFragmentManager
+                .beginTransaction()
                 .replace(android.R.id.content, SettingsFragment())
                 .commit()
             return
@@ -64,20 +64,28 @@ class LauncherActivity : AppCompatActivity() {
 
         if (checkForDisplayShift("onCreate")) return
 
-        // If this process already bootstrapped in a previous activity
-        // lifecycle, skip. Android recreates LauncherActivity on config
-        // changes (without killing the process); bootstrapping again would
-        // wipe the live X server's socket as "stale" and start a second
-        // X server on :0. This flag is a companion-level var so it resets
-        // when the process is killed (fold-restart path) but survives
-        // activity recreation inside one process.
+        // Phosh is already running behind MainActivity from a previous
+        // bootstrap in this process. Re-tapping the launcher icon lands here;
+        // forward the user to MainActivity instead of sitting on the loading
+        // screen. Re-running bootstrap would wipe the live X server socket
+        // and start a second X server on :0.
         if (bootstrapCompleted) {
-            android.util.Log.i("Phoshdroid", "onCreate: already bootstrapped this process, skip")
+            android.util.Log.i("Phoshdroid", "onCreate: already bootstrapped, forwarding to MainActivity")
+            forwardToMainActivity()
             return
         }
 
-        registerDisplayChangeRestart()
+        // A previous LauncherActivity instance in this process already kicked
+        // off bootstrap — it's suspended in waitForPhoshReady or still
+        // extracting. Starting a second one would tear down the first's X11
+        // socket mid-setup and leave phosh half-initialised. Show the loading
+        // screen and let the in-flight bootstrap finish.
+        if (bootstrapInProgress) {
+            android.util.Log.i("Phoshdroid", "onCreate: bootstrap already in progress, waiting")
+            return
+        }
 
+        bootstrapInProgress = true
         requestNotificationPermission()
         lifecycleScope.launch {
             try {
@@ -85,19 +93,46 @@ class LauncherActivity : AppCompatActivity() {
                 bootstrapCompleted = true
             } catch (e: Exception) {
                 showError("Startup failed: ${e.message}\n\n${e.stackTraceToString()}", copyable = true)
+            } finally {
+                bootstrapInProgress = false
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // The launcher icon (or the FGS notification) was tapped while this
+        // LauncherActivity was already alive in the background. If bootstrap
+        // finished while we were away, forward to MainActivity now — the
+        // earlier in-bootstrap attempt would have been BAL-blocked.
+        setIntent(intent)
+        if (bootstrapCompleted && !restartInFlight) {
+            android.util.Log.i("Phoshdroid", "onNewIntent: forwarding to MainActivity")
+            forwardToMainActivity()
         }
     }
 
     override fun onResume() {
         super.onResume()
-        checkForDisplayShift("onResume")
+        // Catches the case where bootstrap completed while we were paused
+        // (Android backed our startActivity call out as BAL_BLOCK). The
+        // user is now back in front of LauncherActivity — hand off to
+        // MainActivity, which is allowed because we now have a visible
+        // activity to launch from.
+        if (bootstrapCompleted && !restartInFlight && !isFinishing) {
+            android.util.Log.i("Phoshdroid", "onResume: bootstrap done, forwarding to MainActivity")
+            forwardToMainActivity()
+        }
     }
 
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
-        super.onConfigurationChanged(newConfig)
-        checkForDisplayShift("onConfigurationChanged")
-    }
+    // onConfigurationChanged / onResume / DisplayListener intentionally do NOT
+    // trigger shift detection. During activity startup Android can report
+    // transient dimensions (splash-time config vs final config), and any check
+    // that fires mid-bootstrap will see that transition as a "shift" and kill
+    // the process — causing a restart loop. The single onCreate check at the
+    // start of each process is enough: a genuine fold/unfold between launches
+    // shows up there. Fold during active use is not auto-handled; the user
+    // relaunches the app to pick up the new dimensions.
 
     private fun currentDisplayId(): Int =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -111,12 +146,17 @@ class LauncherActivity : AppCompatActivity() {
      * Compares the activity's current display to whatever the running proot
      * session was started against. If they differ, persists the new dims and
      * tears down the process. Returns true if a restart was initiated.
+     *
+     * Uses WindowManager.currentWindowMetrics instead of resources.displayMetrics
+     * because the latter can return stale values during onCreate before Android
+     * has finished propagating the activity's final configuration — which would
+     * otherwise cause false-positive shifts on subsequent lifecycle callbacks.
      */
     private fun checkForDisplayShift(source: String): Boolean {
         if (restartInFlight) return true
-        val m = resources.displayMetrics
-        val currentW = m.widthPixels
-        val currentH = m.heightPixels
+        val bounds = windowManager.currentWindowMetrics.bounds
+        val currentW = bounds.width()
+        val currentH = bounds.height()
         val currentId = currentDisplayId()
         val prefs = getSharedPreferences(DISPLAY_STATE_PREFS, MODE_PRIVATE)
         val lastW = prefs.getInt("last_w", 0)
@@ -126,9 +166,10 @@ class LauncherActivity : AppCompatActivity() {
         if (lastW != 0 && (lastW != currentW || lastH != currentH || lastId != currentId)) {
             android.util.Log.w(
                 "Phoshdroid",
-                "[$source] display shift ${lastW}x${lastH}@${lastId} -> ${currentW}x${currentH}@${currentId}, restarting"
+                "[$source] display shift ${lastW}x$lastH@$lastId -> ${currentW}x$currentH@$currentId, restarting",
             )
-            prefs.edit()
+            prefs
+                .edit()
                 .putInt("last_w", currentW)
                 .putInt("last_h", currentH)
                 .putInt("last_id", currentId)
@@ -138,7 +179,8 @@ class LauncherActivity : AppCompatActivity() {
             return true
         }
         // First run or same dimensions — record and move on.
-        prefs.edit()
+        prefs
+            .edit()
             .putInt("last_w", currentW)
             .putInt("last_h", currentH)
             .putInt("last_id", currentId)
@@ -146,34 +188,41 @@ class LauncherActivity : AppCompatActivity() {
         return false
     }
 
-    private fun registerDisplayChangeRestart() {
-        val dm = getSystemService(android.hardware.display.DisplayManager::class.java) ?: return
-        val listener = object : android.hardware.display.DisplayManager.DisplayListener {
-            override fun onDisplayChanged(displayId: Int) {
-                checkForDisplayShift("DisplayListener")
-            }
-            override fun onDisplayAdded(displayId: Int) {
-                checkForDisplayShift("DisplayListener.add")
-            }
-            override fun onDisplayRemoved(displayId: Int) {
-                checkForDisplayShift("DisplayListener.remove")
-            }
+    private fun forwardToMainActivity() {
+        try {
+            val waylandIntent =
+                Intent(this, Class.forName("com.termux.x11.MainActivity"))
+                    .putExtra("phoshdroid_top_padding_px", TOP_GAP_PX)
+                    .putExtra("phoshdroid_bottom_padding_px", BOTTOM_GAP_PX)
+                    .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            startActivity(waylandIntent)
+            finish()
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        } catch (e: Exception) {
+            android.util.Log.e("Phoshdroid", "Failed to forward to MainActivity", e)
+            statusText.text = "Display failed: ${e.message}"
         }
-        dm.registerDisplayListener(listener, null)
     }
 
     private fun restartApp() {
         try {
-            com.phoshdroid.app.proot.ProotService.stop(this)
-        } catch (_: Exception) {}
+            com.phoshdroid.app.proot.ProotService
+                .stop(this)
+        } catch (_: Exception) {
+        }
         val restartIntent = packageManager.getLaunchIntentForPackage(packageName)
         if (restartIntent != null) {
             restartIntent.addFlags(
-                Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK
+                Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK,
             )
-            val pending = android.app.PendingIntent.getActivity(
-                this, 0, restartIntent, android.app.PendingIntent.FLAG_IMMUTABLE
-            )
+            val pending =
+                android.app.PendingIntent.getActivity(
+                    this,
+                    0,
+                    restartIntent,
+                    android.app.PendingIntent.FLAG_IMMUTABLE,
+                )
             val am = getSystemService(android.app.AlarmManager::class.java)
             am?.set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 200, pending)
         }
@@ -196,14 +245,16 @@ class LauncherActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         if (android.os.Environment.isExternalStorageManager()) return
         try {
-            val intent = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                .setData(android.net.Uri.parse("package:${packageName}"))
+            val intent =
+                Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    .setData(android.net.Uri.parse("package:$packageName"))
             startActivity(intent)
         } catch (_: Exception) {
             // Fallback: generic Settings entry for MANAGE_EXTERNAL_STORAGE
             try {
                 startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -216,11 +267,12 @@ class LauncherActivity : AppCompatActivity() {
         if (!File(bootstrapDir, ".extraction_complete").exists()) {
             showProgress(getString(R.string.extracting_termux))
             progressBar.isIndeterminate = true
-            val extracted = withContext(Dispatchers.IO) {
-                assets.open("bootstrap.bin").use { input ->
-                    extractor.extract(input, -1, bootstrapDir)
+            val extracted =
+                withContext(Dispatchers.IO) {
+                    assets.open("bootstrap.bin").use { input ->
+                        extractor.extract(input, -1, bootstrapDir)
+                    }
                 }
-            }
             if (!extracted) {
                 showError("Failed to extract Termux environment.")
                 return
@@ -248,7 +300,7 @@ class LauncherActivity : AppCompatActivity() {
         // restart, OOM kill, etc.), subsequent launches found rootfsDir
         // already present, skipped the move, and left a half-populated rootfs
         // that hung phosh at "Preparing your desktop".
-        val prefixDir = "${filesDir}/usr"
+        val prefixDir = "$filesDir/usr"
         val rootfsDir = File(prefixDir, "var/lib/proot-distro/installed-rootfs/${ProotService.DISTRO_NAME}")
         if (!File(rootfsDir, ".extraction_complete").exists()) {
             showProgress(getString(R.string.extracting_rootfs))
@@ -256,11 +308,13 @@ class LauncherActivity : AppCompatActivity() {
             val availableBytes = StatFs(filesDir.absolutePath).availableBytes
             val requiredBytes = 1_500_000_000L
             if (availableBytes < requiredBytes) {
-                showError(getString(
-                    R.string.error_no_space,
-                    formatSize(requiredBytes),
-                    formatSize(availableBytes)
-                ))
+                showError(
+                    getString(
+                        R.string.error_no_space,
+                        formatSize(requiredBytes),
+                        formatSize(availableBytes),
+                    ),
+                )
                 return
             }
 
@@ -271,11 +325,12 @@ class LauncherActivity : AppCompatActivity() {
             withContext(Dispatchers.IO) {
                 File(filesDir, "rootfs").deleteRecursively()
             }
-            val extracted = withContext(Dispatchers.IO) {
-                assets.open("rootfs.bin").use { input ->
-                    extractor.extract(input, -1, rootfsDir)
+            val extracted =
+                withContext(Dispatchers.IO) {
+                    assets.open("rootfs.bin").use { input ->
+                        extractor.extract(input, -1, rootfsDir)
+                    }
                 }
-            }
             if (!extracted) {
                 showError("Failed to extract postmarketOS.")
                 return
@@ -298,7 +353,8 @@ class LauncherActivity : AppCompatActivity() {
         // taps to act as touches, not move a trackpad cursor. "3" = Direct touch.
         // Also hide the additional keyboard toolbar so phosh owns the full surface
         // height — its lockscreen unlock gesture needs to originate from the bottom edge.
-        androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        androidx.preference.PreferenceManager
+            .getDefaultSharedPreferences(this)
             .edit()
             .putString("touchMode", "3")
             // Keep the Termux:X11 shortcut toolbar (ESC, CTRL, arrows, etc.) visible.
@@ -329,7 +385,12 @@ class LauncherActivity : AppCompatActivity() {
             File(tmpDir, ".X0-lock"),
             File(tmpDir, "wayland-0"),
             File(tmpDir, "wayland-0.lock"),
-            File(tmpDir, "dbus-session")
+            File(tmpDir, "dbus-session"),
+            // Stale start log from prior session: waitForPhoshReady below
+            // would otherwise see the previous run's "Phosh ready after"
+            // line and return true instantly, reintroducing the empty-X11
+            // flash we're trying to mask.
+            File(tmpDir, "phoshdroid-start.log"),
         ).forEach { stale ->
             if (stale.exists()) {
                 android.util.Log.i("Phoshdroid", "Removing stale ${stale.name}")
@@ -356,7 +417,7 @@ class LauncherActivity : AppCompatActivity() {
             if (dw > 0 && dh > 0) {
                 Os.setenv("XLORIE_WIDTH", dw.toString(), true)
                 Os.setenv("XLORIE_HEIGHT", dh.toString(), true)
-                android.util.Log.e("Phoshdroid", "XLORIE geometry: ${dw}x${dh}")
+                android.util.Log.e("Phoshdroid", "XLORIE geometry: ${dw}x$dh")
             }
             android.util.Log.e("Phoshdroid", "=== Phase 5: About to start X11 server ===")
 
@@ -368,8 +429,9 @@ class LauncherActivity : AppCompatActivity() {
             Thread({
                 android.os.Looper.prepare()
                 try {
-                    val ctor = com.termux.x11.CmdEntryPoint::class.java
-                        .getDeclaredConstructor(Array<String>::class.java)
+                    val ctor =
+                        com.termux.x11.CmdEntryPoint::class.java
+                            .getDeclaredConstructor(Array<String>::class.java)
                     ctor.isAccessible = true
                     ctor.newInstance(arrayOf(":0"))
                     android.util.Log.e("Phoshdroid", "X11 server running with Looper")
@@ -410,11 +472,24 @@ class LauncherActivity : AppCompatActivity() {
         }
 
         android.util.Log.e("Phoshdroid", "Launching X11 activity...")
+        // If the user backgrounded us during bootstrap, Android 14+ BAL
+        // policy blocks startActivity from a non-visible activity even with
+        // an FGS running. Skip the doomed attempt; onResume / onNewIntent
+        // (or the FGS notification tap) will retry from a foreground
+        // context that BAL allows.
+        if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+            android.util.Log.i(
+                "Phoshdroid",
+                "bootstrap finished while backgrounded; deferring MainActivity launch",
+            )
+            return
+        }
         try {
-            val waylandIntent = Intent(this, Class.forName("com.termux.x11.MainActivity"))
-                .putExtra("phoshdroid_top_padding_px", TOP_GAP_PX)
-                .putExtra("phoshdroid_bottom_padding_px", BOTTOM_GAP_PX)
-                .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            val waylandIntent =
+                Intent(this, Class.forName("com.termux.x11.MainActivity"))
+                    .putExtra("phoshdroid_top_padding_px", TOP_GAP_PX)
+                    .putExtra("phoshdroid_bottom_padding_px", BOTTOM_GAP_PX)
+                    .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
             startActivity(waylandIntent)
             // LauncherActivity is no longer useful — let the user back-swipe
             // straight out of MainActivity instead of returning here.
@@ -432,23 +507,32 @@ class LauncherActivity : AppCompatActivity() {
      */
     private suspend fun waitForPhoshReady(
         logFile: File,
-        timeoutMs: Long = 60_000,
-    ): Boolean = withContext(Dispatchers.IO) {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            if (logFile.exists()) {
-                try {
-                    if (logFile.bufferedReader().useLines { lines ->
-                            lines.any { it.contains("Phosh ready after") }
-                        }) {
-                        return@withContext true
+        // Bumped from 60s after observing a 2m30s phosh startup on a Pixel 9
+        // Pro Fold under proot — the chown -R user:user /home/user step in
+        // start.sh dominated the time. 60s caused a premature MainActivity
+        // launch into an empty X root; the LorieView never repainted and the
+        // user saw the X-cursor desktop indefinitely.
+        timeoutMs: Long = 240_000,
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            val deadline = System.currentTimeMillis() + timeoutMs
+            while (System.currentTimeMillis() < deadline) {
+                if (logFile.exists()) {
+                    try {
+                        if (logFile.bufferedReader().useLines { lines ->
+                                lines.any { it.contains("Phosh ready after") }
+                            }
+                        ) {
+                            return@withContext true
+                        }
+                    } catch (_: Exception) {
+                        // log being actively written — retry
                     }
-                } catch (_: Exception) { /* log being actively written — retry */ }
+                }
+                Thread.sleep(500)
             }
-            Thread.sleep(500)
+            false
         }
-        false
-    }
 
     private fun showProgress(message: String) {
         statusText.text = message
@@ -457,7 +541,10 @@ class LauncherActivity : AppCompatActivity() {
         errorText.visibility = View.GONE
     }
 
-    private fun showError(message: String, copyable: Boolean = false) {
+    private fun showError(
+        message: String,
+        copyable: Boolean = false,
+    ) {
         statusText.visibility = View.GONE
         progressBar.visibility = View.GONE
         errorText.visibility = View.VISIBLE
@@ -479,6 +566,7 @@ class LauncherActivity : AppCompatActivity() {
 
     companion object {
         const val ACTION_SETTINGS = "com.phoshdroid.app.SETTINGS"
+
         // Pixel gaps reserved above and below phosh's X11 surface. Enough space that
         // a bottom-edge swipe originating in the gap crosses into phosh and registers
         // as an edge gesture for lockscreen unlock. Top gap keeps phosh clear of the
@@ -492,5 +580,12 @@ class LauncherActivity : AppCompatActivity() {
         // process via AlarmManager).
         @Volatile
         private var bootstrapCompleted = false
+
+        // Per-process flag: set while bootstrap() is actively running so a
+        // second onCreate in the same process (e.g. user re-tapping the icon
+        // while the first bootstrap is still in waitForPhoshReady) doesn't
+        // kick off a concurrent second bootstrap and wipe the first's sockets.
+        @Volatile
+        private var bootstrapInProgress = false
     }
 }
