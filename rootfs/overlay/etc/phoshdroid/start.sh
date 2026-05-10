@@ -11,7 +11,23 @@ set -x
 # --- root-side prep -------------------------------------------------------
 mkdir -p /tmp /run /var/tmp /dev/shm /usr/lib/gdk-pixbuf-2.0/2.10.0 /home/user
 chmod 1777 /tmp /var/tmp /dev/shm 2>/dev/null
-chown -R user:user /home/user 2>/dev/null || true
+
+# chown -R user:user /home/user used to run unconditionally on every launch.
+# On a populated profile (~200 MB / 700 files including .mozilla and .cache)
+# this took 2-3 minutes under proot — every chown syscall pays for proot's
+# translator, and the tree only grows as the user installs/uses apps. Gate
+# it behind a marker so it runs once on first boot (or after a deliberate
+# reset by deleting the marker) and is a no-op afterwards. The on-disk uid
+# is stable across launches; proot doesn't rewrite it.
+CHOWN_MARKER=/home/user/.phoshdroid-chowned
+if [ ! -f "$CHOWN_MARKER" ]; then
+    echo "first-boot chown of /home/user (one-time; can take a few minutes on a populated profile)"
+    chown -R user:user /home/user 2>/dev/null || true
+    # Marker itself ends up user-owned by the chown above, but write it
+    # explicitly so a partial chown still leaves a sensible flag.
+    touch "$CHOWN_MARKER" 2>/dev/null || true
+    chown user:user "$CHOWN_MARKER" 2>/dev/null || true
+fi
 
 # Replace bwrap with a shim that strips sandbox flags and just execs the inner
 # command. bwrap's real sandboxing needs CLONE_NEWUSER + seccomp, which proot
