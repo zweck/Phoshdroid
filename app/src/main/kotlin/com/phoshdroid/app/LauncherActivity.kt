@@ -125,14 +125,13 @@ class LauncherActivity : AppCompatActivity() {
         }
     }
 
-    // onConfigurationChanged / onResume / DisplayListener intentionally do NOT
-    // trigger shift detection. During activity startup Android can report
-    // transient dimensions (splash-time config vs final config), and any check
-    // that fires mid-bootstrap will see that transition as a "shift" and kill
-    // the process — causing a restart loop. The single onCreate check at the
-    // start of each process is enough: a genuine fold/unfold between launches
-    // shows up there. Fold during active use is not auto-handled; the user
-    // relaunches the app to pick up the new dimensions.
+    // onConfigurationChanged / onResume / DisplayListener inside this
+    // activity intentionally do NOT trigger shift detection — splash-time
+    // dimension flicker would otherwise look like a shift and tear down
+    // the in-flight bootstrap. The cold-start onCreate check below covers
+    // initial-launch shifts; subsequent foreground events (including ones
+    // that happen while MainActivity is on top, not LauncherActivity) are
+    // handled by DisplayShiftMonitor at the Application level.
 
     private fun currentDisplayId(): Int =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -411,13 +410,48 @@ class LauncherActivity : AppCompatActivity() {
             // Leave a bottom gap below phosh's surface so a swipe that starts in
             // that black area and enters phosh registers as an edge swipe — phosh's
             // lockscreen unlock needs the gesture to begin at the surface's bottom.
-            val metrics = resources.displayMetrics
-            val dw = metrics.widthPixels
-            val dh = metrics.heightPixels - TOP_GAP_PX - BOTTOM_GAP_PX
-            if (dw > 0 && dh > 0) {
-                Os.setenv("XLORIE_WIDTH", dw.toString(), true)
-                Os.setenv("XLORIE_HEIGHT", dh.toString(), true)
-                android.util.Log.e("Phoshdroid", "XLORIE geometry: ${dw}x$dh")
+            //
+            // Three sources of dimensions, in order of preference:
+            //   1. WindowManager.currentWindowMetrics — authoritative once
+            //      the activity is attached, but can return 0×0 during very
+            //      early lifecycle phases (observed on Pixel 9 Pro Fold when
+            //      the activity comes up while the device was previously
+            //      asleep / in Doze).
+            //   2. resources.displayMetrics — historical default; on Android
+            //      11+ this is activity bounds and shares the same edge case.
+            //   3. SharedPreferences last-known dims from checkForDisplayShift
+            //      — always populated since the same onCreate already wrote
+            //      them. Acts as a guaranteed-non-zero fallback.
+            //
+            // Without (3), an empty XLORIE_WIDTH/HEIGHT propagates through
+            // the env file into start.sh, which writes an empty 'mode=' line
+            // in phoc.ini. phoc silently ignores it and falls back to
+            // wlroots' default 1024×768, leaving the user with phosh stuck
+            // at a tiny resolution.
+            val (dw, dh) =
+                run {
+                    val wmBounds = windowManager.currentWindowMetrics.bounds
+                    val wmW = wmBounds.width()
+                    val wmH = wmBounds.height()
+                    if (wmW > 0 && wmH > 0) return@run wmW to wmH
+                    val metrics = resources.displayMetrics
+                    val mW = metrics.widthPixels
+                    val mH = metrics.heightPixels
+                    if (mW > 0 && mH > 0) return@run mW to mH
+                    val prefs = getSharedPreferences(DISPLAY_STATE_PREFS, MODE_PRIVATE)
+                    prefs.getInt("last_w", 0) to prefs.getInt("last_h", 0)
+                }
+            val xlorieW = dw
+            val xlorieH = dh - TOP_GAP_PX - BOTTOM_GAP_PX
+            if (xlorieW > 0 && xlorieH > 0) {
+                Os.setenv("XLORIE_WIDTH", xlorieW.toString(), true)
+                Os.setenv("XLORIE_HEIGHT", xlorieH.toString(), true)
+                android.util.Log.i("Phoshdroid", "XLORIE geometry: ${xlorieW}x$xlorieH (raw ${dw}x$dh)")
+            } else {
+                android.util.Log.e(
+                    "Phoshdroid",
+                    "Could not determine display size; phoc will start at wlroots default (likely 1024x768)",
+                )
             }
             android.util.Log.e("Phoshdroid", "=== Phase 5: About to start X11 server ===")
 
@@ -587,5 +621,12 @@ class LauncherActivity : AppCompatActivity() {
         // kick off a concurrent second bootstrap and wipe the first's sockets.
         @Volatile
         private var bootstrapInProgress = false
+
+        /**
+         * Read-only view of bootstrapInProgress for DisplayShiftMonitor.
+         * Lives here rather than in the monitor because the same flag also
+         * gates the duplicate-bootstrap branch of onCreate.
+         */
+        fun bootstrapInProgressForMonitor(): Boolean = bootstrapInProgress
     }
 }
