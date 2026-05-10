@@ -1,6 +1,11 @@
 #!/bin/bash
 # Phoshdroid startup — root-side prep, then drops to UID 1000 for the phosh session.
 exec > /tmp/phoshdroid-start.log 2>&1
+# Prefix every traced command with epoch.fractional-seconds + line number so
+# we can pin down which step is slow when phosh-ready takes minutes instead
+# of the expected ~6s. Without this the trace is undated and a 2-minute
+# chown looks identical to a 2-second one.
+export PS4='+ [$(date +%s.%N | cut -c1-14)] L${LINENO}: '
 set -x
 
 # --- root-side prep -------------------------------------------------------
