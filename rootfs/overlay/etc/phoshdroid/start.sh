@@ -163,12 +163,14 @@ nohup bash -c '
         out="/tmp/pmroot/out.$id"
         done_marker="/tmp/pmroot/done.$id"
         echo "[$(date +%T)] running $id: $cmd"
-        # eval so the printf %q quoting from the wrapper survives.
-        # No '|| true': we WANT $? to reflect the actual command, and the
-        # outer loop body is robust against non-zero so the listener
-        # doesn't die. The first version had '|| true' which made $? read
-        # back as 0 every time — every command appeared to succeed even
-        # when apk had genuinely failed.
+        # Run via bash -c so printf %q quoting from the wrapper survives.
+        # Do NOT append `|| true` here — that masks the real exit code
+        # because $? then reflects the true builtin, not the command. We
+        # rely on the outer loop being robust against non-zero rc so the
+        # listener stays alive without that suppression.
+        # (Keep comments apostrophe-free because the whole listener body
+        #  lives inside a single-quoted nohup bash dash-c block, and a
+        #  stray apostrophe terminates the surrounding quote.)
         bash -c "$cmd" >"$out" 2>&1
         rc=$?
         echo "$rc" >"$done_marker"
