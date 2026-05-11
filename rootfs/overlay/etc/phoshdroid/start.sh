@@ -173,6 +173,24 @@ nohup bash -c '
         #  stray apostrophe terminates the surrounding quote.)
         bash -c "$cmd" >"$out" 2>&1
         rc=$?
+        # If the command touched apk, it may have reinstalled bwrap and
+        # clobbered our shim. Glycin then calls a real bwrap on its next
+        # icon load, which SIGABRTs under proot and tears down phoc —
+        # exactly the symptom seen after the first apk upgrade. Restore
+        # the shim opportunistically; cheap if bwrap is already the shim,
+        # essential if apk just overwrote it.
+        case "$cmd" in
+            *apk*)
+                if [ -f /etc/phoshdroid/bwrap-shim.sh ] && [ -e /usr/bin/bwrap ]; then
+                    if ! head -c2 /usr/bin/bwrap 2>/dev/null | grep -q "#!"; then
+                        cp /usr/bin/bwrap /usr/bin/bwrap.real 2>/dev/null || true
+                        cp /etc/phoshdroid/bwrap-shim.sh /usr/bin/bwrap
+                        chmod +x /usr/bin/bwrap
+                        echo "[$(date +%T)] restored bwrap shim after apk"
+                    fi
+                fi
+                ;;
+        esac
         echo "$rc" >"$done_marker"
         echo "[$(date +%T)] done $id rc=$rc"
     done
